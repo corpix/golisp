@@ -61,12 +61,13 @@
      (let* ((name+args (syntax->list #'x))
             (name (car name+args))
             (args (cdr name+args)))
-       (with-syntax ((go/name (format-id name "go/~a" name)))
+       (with-syntax ((name name)
+                     (go/name (format-id name "go/~a" name)))
          (with-syntax ((xx #`(go/name #,@args)))
            #`(begin
                (define-syntax xx xs ...)
                (hash-set! (*macro*)
-                          (quote go/name)
+                          (quote name)
                           (lambda (caller-args)
                             (eval (cons (quote go/name) caller-args) ns))))))))))
 
