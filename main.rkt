@@ -14,7 +14,7 @@
 
 (display
  (go->string (package main)
-             (import ("fmt"))
+             (import "fmt" (e "errors"))
              (func (say (msg string))
                    (fmt.Println msg))
              (func (main)

@@ -3,4 +3,6 @@
          (for-syntax (all-defined-out)))
 
 (struct go:package   (name)    #:prefab)
-(struct go:import    (imports) #:prefab)
+
+(struct go:imports   (imports)         #:prefab)
+(struct go:import    (package altname) #:prefab)

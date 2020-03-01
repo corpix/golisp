@@ -20,7 +20,9 @@
 ;;
 
 (define +new-line+ "\n")
+(define +tab+ "\t")
 (define +comma+ ", ")
+(define +space+ " ")
 
 (define *macro* (make-parameter (make-hasheq)))
 
@@ -30,6 +32,10 @@
 (define ns (namespace-anchor->namespace ns-anchor))
 
 ;;
+
+(define (~symbol->string v)
+  (cond ((symbol? v) (symbol->string v))
+        ((string? v)  v)))
 
 (define ((partial f . xs) . xxs)
   (apply f (append xs xxs)))
@@ -45,13 +51,29 @@
 
 (begin-for-syntax
   (define-syntax-class Package
-    #:description "Current package name, like 'main'"
+    #:description "current package name, like: main"
     #:attributes (ast)
-    (pattern name:id #:attr ast (go:package #'name)))
+    (pattern name:id #:attr ast (go:package (syntax->datum #'name))))
   (define-syntax-class Import
-    #:description "List of package imports, like 'github.com/urfave/cli'"
+    #:description "list of package imports, like: \"github.com/urfave/cli\""
     #:attributes (ast)
-    (pattern (pkg:string ...) #:attr ast (go:import #'(pkg ...)))))
+    (pattern pkg:string
+             #:attr ast
+             (go:import (syntax->datum #'pkg) #f)))
+  (define-syntax-class ImportNamed
+    #:description "list of named package imports, like: (c \"github.com/urfave/cli\")"
+    #:attributes (ast)
+    (pattern (altname:id pkg:string)
+             #:attr ast
+             (go:import
+              (syntax->datum #'pkg)
+              (syntax->datum #'altname))))
+  (define-splicing-syntax-class Imports
+    #:description "list of package imports"
+    #:attributes (ast)
+    (pattern (~seq (~or* v:ImportNamed v:Import) ...)
+             #:attr ast
+             (go:imports (attribute v.ast)))))
 
 ;;
 
@@ -77,7 +99,7 @@
 
 (define-gosyntax (import stx)
   (syntax-parse stx
-    ((_ pkgs:Import) #`(quasiquote #,(attribute pkgs.ast)))))
+    ((_ imports:Imports) #`(quasiquote #,(attribute imports.ast)))))
 
 ;;
 
@@ -86,20 +108,29 @@
     ((go:package name)
      (format "package ~a" name))))
 
-(define (emit-import ast)
+(define (emit-imports ast)
   (match ast
-    ((go:import pkgs)
-     (format "import ~a" (map ~s pkgs)))))
+    ((go:imports imports)
+     (format (string-append "import (" +new-line+ +tab+ "~a" +new-line+ ")")
+             (string-join (map emit-imports imports)
+                          (string-append +new-line+ +tab+))))
+    ((go:import package altname)
+     (string-append
+      (if altname
+          (string-append (~symbol->string altname)
+                         +space+)
+          "")
+      (~s package)))))
 
 (define (emit-string ast)
   (~s ast))
 
 (define (emit ast)
   (match ast
-    ((? go:package? ast) (emit-package ast))
-    ((? go:import?  ast) (emit-import  ast))
+    ((? go:package? ast)  (emit-package ast))
+    ((? go:imports?  ast) (emit-imports  ast))
 
-    ((? symbol? ast) (emit-string (symbol->string ast)))
+    ((? symbol? ast) (emit-string (~symbol->string ast)))
     ((? string? ast) (emit-string ast))
 
     ((? (lambda (v) (and (list? v)
