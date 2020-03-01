@@ -34,8 +34,9 @@
 ;;
 
 (define (~symbol->string v)
-  (cond ((symbol? v) (symbol->string v))
-        ((string? v)  v)))
+  (match v
+    ((? symbol? v) (symbol->string v))
+    ((? string? v)  v)))
 
 (define ((partial f . xs) . xxs)
   (apply f (append xs xxs)))
