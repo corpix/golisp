@@ -24,6 +24,7 @@
 (define +new-line+ "\n")
 (define +tab+ "\t")
 (define +comma+ ", ")
+(define +set+ " = ")
 (define +space+ " ")
 
 (define *macro* (make-parameter (make-hasheq)))
@@ -91,17 +92,23 @@
           "")
       (~s package)))))
 
-(define (emit-type-bindings ast)
+(define (emit-bindings ast)
   (displayln ast)
   (match ast
-    ((and (list ast ...) (list (? go:type-binding?) ...))
-     (string-append "(" (string-join (map emit-type-bindings ast) +comma+) ")"))
+    ((and (list ast ...) (list (? go:binding?) ...))
+     (string-append "(" (string-join (map emit-bindings ast) +comma+) ")"))
 
-    ((go:type-binding (? false?) type)
+    ((go:binding (? false?) type _)
      (~a type))
 
-    ((go:type-binding name type)
-     (format "~a ~a" name type))))
+    ((go:binding name type value)
+     (string-append
+      (symbol->string name)
+      (or (string-append +space+ (~a type)) "")
+      (or (and value
+               (string-append +set+
+                              (emit (expand value))))
+          "")))))
 
 (define (emit-tuple ast)
   (let ((concat
@@ -120,10 +127,15 @@
 (define (emit-func ast)
   (match ast
     ((go:func name args return body)
-     (string-append "func "
-                    (~symbol->string name) (emit-type-bindings (or args null))
-                    +space+                (emit-type-bindings (or return null))
+     (string-append "func" +space+
+                    (~symbol->string name) (emit-bindings (or args null))
+                    +space+                (emit-bindings (or return null))
                     +space+ "{" +new-line+ (emit (expand body)) +new-line+ "}"))))
+
+(define (emit-var ast)
+  (match ast
+    ((go:var bindings)
+     (string-append "var" +space+ (emit-bindings bindings)))))
 
 (define (emit-id ast)
   (~a ast))
@@ -131,16 +143,21 @@
 (define (emit-string ast)
   (~s ast))
 
+(define (emit-number ast)
+  (~a ast))
+
 (define (emit ast)
   (match ast
     ((? go:package?      ast) (emit-package       ast))
     ((? go:imports?      ast) (emit-imports       ast))
     ((? go:func?         ast) (emit-func          ast))
-    ((? go:type-binding? ast) (emit-type-bindings ast))
+    ((? go:var?          ast) (emit-var           ast))
+    ((? go:binding?      ast) (emit-bindings      ast))
 
 
-    ((? symbol? ast) (emit-id (symbol->string ast)))
-    ((? string? ast) (emit-string ast))
+    ((? symbol? ast)  (emit-id (symbol->string ast)))
+    ((? string? ast)  (emit-string ast))
+    ((? number? ast)  (emit-number ast))
 
     ((? (lambda (v) (and (list? v)
                          (not (empty? v))
@@ -206,30 +223,44 @@
              #:attr ast
              (go:imports (attribute v.ast))))
 
-  (define-splicing-syntax-class TypeBindings
-    #:description "binds names to types"
+  (define-splicing-syntax-class Bindings
+    #:description "name to type/name to type and value binding"
     #:attributes (ast)
-    (pattern (((~optional var:id #:defaults ((var #'#f))) type:id) ...)
+    (pattern (~seq ((~optional var:id #:defaults ((var #'#f))) type:id) ...)
              #:attr ast
-             (map (lambda (k v) (go:type-binding (syntax->datum k)
-                                                 (syntax->datum v)))
+             (map (lambda (n t) (apply go:binding (map syntax->datum (list n t #'#f))))
                   (if (empty? (syntax->list #'(var ...)))
                       (vector->list (make-vector (length (syntax->list #'(type ...))) #'#f))
                       (syntax->list #'(var ...)))
-                  (syntax->list #'(type ...)))))
+                  (syntax->list #'(type ...))))
+    (pattern (~seq ((var:id (~optional type:id #:defaults ((type #'#f))) value)) ...)
+             #:attr ast
+             (map (lambda (n t v) (apply go:binding (map syntax->datum (list n t v))))
+                  (syntax->list #'(var ...))
+                  (if (empty? (syntax->list #'(type ...)))
+                      (vector->list (make-vector (length (syntax->list #'(type ...))) #'#f))
+                      (syntax->list #'(type ...)))
+                  (syntax->list #'(value ...)))))
 
   (define-splicing-syntax-class Func
     #:description "function"
     #:attributes (ast)
-    (pattern (~seq ((~optional name:id          #:defaults ((name #'#f)))
-                    (~optional tb:TypeBindings  #:defaults ((tb   #'())))
-                    (~optional rtb:TypeBindings #:defaults ((rtb  #'()))))
+    (pattern (~seq ((~optional  name:id       #:defaults ((name #'#f)))
+                    (~optional (tb:Bindings)  #:defaults ((tb   #'()))) ;; FIXME: this allows `foo string = "something"` in func arg declaration
+                    (~optional (rtb:Bindings) #:defaults ((rtb  #'()))))
                    body:expr ...)
              #:attr ast
              (go:func (syntax->datum #'name)
                       (attribute tb.ast)
                       (attribute rtb.ast)
-                      (map syntax->datum (syntax->list #'(body ...)))))))
+                      (map syntax->datum (syntax->list #'(body ...))))))
+
+  (define-splicing-syntax-class Var
+    #:description "variable definition"
+    #:attributes (ast)
+    (pattern var:Bindings
+             #:attr ast
+             (go:var (attribute var.ast)))))
 
 ;;
 
@@ -244,3 +275,7 @@
 (define-gosyntax (func stx)
   (syntax-parse stx
     ((_ func:Func) #`(quasiquote #,(attribute func.ast)))))
+
+(define-gosyntax (var stx)
+  (syntax-parse stx
+    ((_ var:Var) #`(quasiquote #,(attribute var.ast)))))

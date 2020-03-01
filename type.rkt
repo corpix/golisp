@@ -7,6 +7,6 @@
 (struct go:imports   (imports)         #:prefab)
 (struct go:import    (package altname) #:prefab)
 
-(struct go:func (name args return body) #:prefab)
-
-(struct go:type-binding (name type) #:prefab)
+(struct go:func    (name args return body) #:prefab)
+(struct go:var     (bindings)              #:prefab)
+(struct go:binding (name type value)       #:prefab)

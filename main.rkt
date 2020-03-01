@@ -10,20 +10,23 @@
 
 ;;
 
-(define-syntax-rule (go->string . stmts) (emit (expand (quote stmts))))
+(define-syntax-rule (go->string . stmts) (emit  (expand (quote stmts))))
 
-(display
- (go->string (package main)
-             (import "fmt" (e "errors"))
-             (func (say ((msg string) (who int)) ((r bool)))
-                   (fmt.Println msg who)
-                   (return true))
-             (func (main () ())
-                   (fmt.Println "chingyang!"
-                                "mother" "fucker!"))
-             ;;anonymous
-             (func () (fmt.Println "aaaaa"))
-             )
+ (display
+ (go->string
+  (package main)
+  (import "fmt" (e "errors"))
+  (func (say ((msg string) (who int)) ((r bool)))
+        (fmt.Println msg who)
+        (return true))
+  (func (main () ())
+        (fmt.Println "chingyang!"
+                     "mother" "fucker!"))
+  ;;anonymous
+  (func () (fmt.Println "aaaaa"))
+  (var (foo string))
+  (var ((foo string "bar")) ((bar int 1)))
+  )
  (current-output-port))
 
 ;;  (package main)
