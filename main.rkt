@@ -15,11 +15,15 @@
 (display
  (go->string (package main)
              (import "fmt" (e "errors"))
-             (func (say (msg string))
-                   (fmt.Println msg))
-             (func (main)
+             (func (say ((msg string) (who int)) ((r bool)))
+                   (fmt.Println msg who)
+                   (return true))
+             (func (main () ())
                    (fmt.Println "chingyang!"
-                          "mother" "fucker!")))
+                                "mother" "fucker!"))
+             ;;anonymous
+             (func () (fmt.Println "aaaaa"))
+             )
  (current-output-port))
 
 ;;  (package main)
