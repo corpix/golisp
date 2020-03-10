@@ -36,12 +36,6 @@ shell_opts = -v $(shell_volume_nix):/nix:rw \
 	--hostname $(PROJECT).localhost         \
 	$(foreach v,$(ports), -p $(v):$(v) ) $(add_shell_opts)
 
-lint_opts = --color=always                                                     \
-	--exclude='uses unkeyed fields'                                            \
-	--exclude='type .* is unused'                                              \
-	--exclude='should merge variable declaration with assignment on next line' \
-	--deadline=120s                                                            \
-
 ## helpers
 
 , = ,
@@ -70,18 +64,10 @@ define required
 @if [ -z $(2) ]; then $(call fail,"$(1) is required") fi
 endef
 
-define test_run
-bash --noprofile -euxo pipefail -c "$(3) go test $(2) $(1) | grep -vF '[no test files]'"
-endef
-
-define lint_run
-golangci-lint $(lint_opts) run $(1)
-endef
-
 ## targets
 
 .PHONY: all
-all: test lint build # test, check and build all cmds
+all: build # test, check and build all cmds
 
 .PHONY: help
 help: # print defined targets and their comments
@@ -95,14 +81,6 @@ help: # print defined targets and their comments
 ### development
 
 #### testing
-
-.PHONY: test
-test: # test whole repository
-	$(call test_run,./...,)
-
-.PHONY: lint
-lint: # lint whole repository
-	$(call lint_run,./...)
 
 #### environment management
 
@@ -145,10 +123,6 @@ dev/attach-session: # attach to development session if running
 .PHONY: dev/stop-session
 dev/stop-session: # stop development environment terminals
 	@$(tmux) kill-session -t $(tmux_session)
-
-.PHONY: fmt
-fmt: # go fmt repository
-	go fmt ./...
 
 .PHONY: clean
 clean: # clean stored state
