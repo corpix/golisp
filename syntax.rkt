@@ -325,10 +325,10 @@
     #:description "chan type description"
     #:attributes (ast kind)
     #:datum-literals (chan -> <-)
-    (pattern (chan t:Type^ (~optional (~or* direction:-> direction:<-)
-                                     #:defaults ((direction (syntax #f)))))
-             #:attr ast (go:type:chan (*->symbol #'direction)
-                                      (attribute t.ast))
+    (pattern (chan (~optional (~or* direction:-> direction:<-)
+                              #:defaults ((direction (syntax #f))))
+                   t:Type^)
+             #:attr ast  (go:type:chan (syntax->datum #'direction) (attribute t.ast))
              #:attr kind 'chan))
 
   (define-syntax-class TypeFunc
@@ -624,6 +624,12 @@
                                                                                                                                    (go:type 'bool #f)
                                                                                                                                    (go:type 'struct (go:type:struct null))))
                                                                                                                  #f)))))))))))
+
+  (check-equal? (go/eval (type (slice   string)))   (list (go:expr (go:type 'slice (go:type:slice    (go:type 'string #f))))))
+  (check-equal? (go/eval (type (array   string 5))) (list (go:expr (go:type 'array (go:type:array    (go:type 'string #f) 5)))))
+  (check-equal? (go/eval (type (ptr     string)))   (list (go:expr (go:type 'ptr   (go:type:ptr      (go:type 'string #f))))))
+  (check-equal? (go/eval (type (chan    string)))   (list (go:expr (go:type 'chan  (go:type:chan #f  (go:type 'string #f))))))
+  (check-equal? (go/eval (type (chan -> string)))   (list (go:expr (go:type 'chan  (go:type:chan '-> (go:type 'string #f))))))
 
   ;; instance
 
