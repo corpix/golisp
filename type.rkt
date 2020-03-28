@@ -2,6 +2,8 @@
 (provide (all-defined-out)
          (for-syntax (all-defined-out)))
 
+(struct go:operator (id operands meta) #:prefab)
+
 (struct go:type                 (kind parameters) #:prefab)
 (struct go:type:map             (key value)       #:prefab)
 (struct go:type:struct          (fields)          #:prefab)
