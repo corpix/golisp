@@ -47,7 +47,7 @@
 (define-syntax (define-gosyntax stx)
   (syntax-parse stx
     ((_ x xs ...)
-     (let* ((name+args (syntax->list #'x))
+     (let* ((name+args (syntax->list (syntax x)))
             (name (car name+args))
             (args (cdr name+args)))
        (with-syntax ((name name)
@@ -188,23 +188,23 @@
                         == > < >= <=
                         bitwise-and bitwise-or bitwise-xor bitwise-left-shift bitwise-right-shift)
     (pattern ((~or* op:+ op:-) xs:Expr ...+)
-             #:attr ast (go:operator (*->symbol #'op)
+             #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
     (pattern ((~or* op:% op:* op:/) x:Expr xs:Expr ...+)
-             #:attr ast (go:operator (*->symbol #'op)
+             #:attr ast (go:operator (*->symbol (syntax op))
                                      (append (list (attribute x.ast))
                                              (attribute xs.ast))))
     (pattern ((~or* op:++ op:--) xs:Expr)
-             #:attr ast (go:operator (*->symbol #'op)
+             #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
     (pattern ((~or* op:== op:> op:< op:>= op:<=) x:Expr xs:Expr ...+)
-             #:attr ast (go:operator (*->symbol #'op)
+             #:attr ast (go:operator (*->symbol (syntax op))
                                      (append (list (attribute x.ast))
                                              (attribute xs.ast))))
     (pattern ((~or* op:bitwise-and op:bitwise-or op:bitwise-xor
                     op:bitwise-left-shift op:bitwise-right-shift)
               x:Expr xs:Expr ...+)
-             #:attr ast (go:operator (*->symbol #'op)
+             #:attr ast (go:operator (*->symbol (syntax op))
                                      (append (list (attribute x.ast))
                                              (attribute xs.ast)))))
 
@@ -231,9 +231,9 @@
     #:description "struct type field"
     #:attributes (ast)
     (pattern (k:id v:Type^ (~optional tag:string #:defaults ((tag (syntax #f)))))
-             #:attr ast (go:type:struct:field (*->symbol #'k)
+             #:attr ast (go:type:struct:field (*->symbol (syntax k))
                                               (attribute v.ast)
-                                              (syntax->datum #'tag)))
+                                              (syntax->datum (syntax tag))))
     (pattern v:Type^
              #:attr ast (go:type:struct:field #f (attribute v.ast) #f)))
 
@@ -249,7 +249,7 @@
     #:description "interface type field"
     #:attributes (ast)
     (pattern (k:id v:Type^)
-             #:attr ast (go:type:interface:field (*->symbol #'k) (attribute v.ast)))
+             #:attr ast (go:type:interface:field (*->symbol (syntax k)) (attribute v.ast)))
     (pattern v:Type^
              #:attr ast (go:type:interface:field #f (attribute v.ast))))
 
@@ -266,7 +266,7 @@
     #:attributes (ast kind)
     #:datum-literals (array ...)
     (pattern (array t:Type^ (~or* size:integer size:...))
-             #:attr ast (go:type:array (attribute t.ast) (syntax->datum #'size))
+             #:attr ast (go:type:array (attribute t.ast) (syntax->datum (syntax size)))
              #:attr kind 'array))
 
   (define-syntax-class TypePtr
@@ -284,7 +284,7 @@
     (pattern (chan (~optional (~or* direction:-> direction:<-)
                               #:defaults ((direction (syntax #f))))
                    t:Type^)
-             #:attr ast  (go:type:chan (syntax->datum #'direction) (attribute t.ast))
+             #:attr ast  (go:type:chan (syntax->datum (syntax direction)) (attribute t.ast))
              #:attr kind 'chan))
 
   (define-syntax-class TypeFunc
@@ -302,7 +302,7 @@
     #:description "custom user type"
     #:attributes (kind ast)
     (pattern t:id
-             #:attr ast (go:type (*->symbol #'t) #f)
+             #:attr ast (go:type (*->symbol (syntax t)) #f)
              #:attr kind '*))
 
   (define-syntax-class Type^
@@ -332,7 +332,7 @@
     #:description "instance init expression"
     #:attributes (ast)
     (pattern ((~or* k:id k:string) v:Expr)
-             #:attr ast (cons (syntax->datum #'k)
+             #:attr ast (cons (syntax->datum (syntax k))
                               (attribute v.ast)))
     (pattern v:Expr #:attr ast (attribute v.ast)))
 
@@ -351,7 +351,7 @@
     #:attributes (ast)
     #:datum-literals (def)
     (pattern (def k:id v:Expr)
-             #:attr ast (go:def (*->symbol #'k) (attribute v.ast))))
+             #:attr ast (go:def (*->symbol (syntax k)) (attribute v.ast))))
 
 
   (define-syntax-class Set
@@ -359,7 +359,7 @@
     #:attributes (ast)
     #:datum-literals (set)
     (pattern (set k:id v:Expr)
-             #:attr ast (go:set (*->symbol #'k) (attribute v.ast))))
+             #:attr ast (go:set (*->symbol (syntax k)) (attribute v.ast))))
 
   ;;
 
@@ -367,7 +367,7 @@
     #:description "package name/identifier"
     #:attributes (ast)
     (pattern (~or* v:id v:keyword v:string)
-             #:attr ast (*->symbol #'v)))
+             #:attr ast (*->symbol (syntax v))))
 
   (define-syntax-class Package
     #:description "current package name"
@@ -407,7 +407,7 @@
              #:attr ast (attribute type.ast))
     (pattern ((name:id type:Type^) ...)
              #:attr ast (map (lambda (n t) (cons n t))
-                             (syntax->list #'(name ...))
+                             (syntax->list (syntax (name ...)))
                              (attribute type.ast))))
 
   (define-syntax-class Func
@@ -418,7 +418,7 @@
                     (~optional i:FuncIO #:defaults ((i (syntax null))))
                     (~optional o:FuncIO #:defaults ((o (syntax null)))))
                    body:Expr ...)
-             #:attr ast (go:func (and (syntax->datum #'name) (*->symbol #'name))
+             #:attr ast (go:func (and (syntax->datum (syntax name)) (*->symbol (syntax name)))
                                  (or (attribute i.ast) null)
                                  (or (attribute o.ast) null)
                                  (attribute body.ast))))
@@ -431,7 +431,7 @@
     (pattern (~or* (name:id type:Type^ value:Expr)
                    (name:id type:Type^ (~optional value:Expr
                                                   #:defaults ((value (syntax #f))))))
-             #:attr ast (go:var-binding (*->symbol #'name)
+             #:attr ast (go:var-binding (*->symbol (syntax name))
                                         (attribute type.ast)
                                         (attribute value.ast))))
 
@@ -459,9 +459,9 @@
                    v:number
                    v:string
                    nil)
-             #:attr ast (go:expr (syntax->datum #'v)))
+             #:attr ast (go:expr (syntax->datum (syntax v))))
     (pattern (x:id xs:Expr ...)
-             #:attr ast (go:expr (cons (syntax->datum #'x) (attribute xs.ast))))))
+             #:attr ast (go:expr (cons (syntax->datum (syntax x)) (attribute xs.ast))))))
 
 ;;
 
@@ -511,7 +511,7 @@
 (define-gosyntax (prelude stx)
   (syntax-parse stx
     ((_ xs:Expr ...)
-     (begin0 #'(void)
+     (begin0 (syntax (void))
        (set-box! (*prelude*)
                  (append (unbox (*prelude*))
                          (expand-macro (attribute xs.ast))))))))
@@ -519,7 +519,7 @@
 (define-gosyntax (epilogue stx)
   (syntax-parse stx
     ((_ xs:Expr ...)
-     (begin0 #'(void)
+     (begin0 (syntax (void))
        (set-box! (*epilogue*)
                  (append (unbox (*epilogue*))
                          (expand-macro (attribute xs.ast))))))))
@@ -538,49 +538,57 @@
          ;; (when (not (empty? (unbox (*epilogue*))))
          ;;   (set! ast (append ast (unbox (*epilogue*)))))
          (with-syntax ((ast ast))
-           #'(quote ast)))))))
+           (syntax (quote ast))))))))
 
 (define (go/string instr) (emit instr))
 
 (module+ test
   (require rackunit rackunit/text-ui)
 
+  (define-syntax (test-case/operator stx)
+    (syntax-parse stx
+      ((_ e:expr r:expr)
+       (with-syntax ((operator (car (syntax->list (syntax e)))))
+         (syntax (test-case (symbol->string (quote operator))
+                   (check-equal? (go/eval e)
+                                 (list (go:expr (go:operator (quote operator) r))))))))))
+
   (for
       ((suite (list
                (test-suite "operator"
-                           (test-case "+"               (check-equal? (go/eval (+ 1 2))      (list (go:expr (go:operator '+  (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "+ ..."           (check-equal? (go/eval (+ 1 2 3))    (list (go:expr (go:operator '+  (list (go:expr 1) (go:expr 2) (go:expr 3)))))))
-                           (test-case "-"               (check-equal? (go/eval (- 1 2))      (list (go:expr (go:operator '-  (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "- ..."           (check-equal? (go/eval (- 1 2 3))    (list (go:expr (go:operator '-  (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case "%"               (check-equal? (go/eval (% 1 2))      (list (go:expr (go:operator '%  (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "% ..."           (check-equal? (go/eval (% 1 2 3))    (list (go:expr (go:operator '%  (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case "*"               (check-equal? (go/eval (* 1 2))      (list (go:expr (go:operator '*  (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "* ..."           (check-equal? (go/eval (* 1 2 3))    (list (go:expr (go:operator '*  (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case "/"               (check-equal? (go/eval (/ 1 2))      (list (go:expr (go:operator '/  (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "/ ..."           (check-equal? (go/eval (/ 1 2 3))    (list (go:expr (go:operator '/  (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case "++"              (check-equal? (go/eval (++ 1))       (list (go:expr (go:operator '++ (go:expr 1))))))
-                           (test-case "--"              (check-equal? (go/eval (-- 1))       (list (go:expr (go:operator '-- (go:expr 1))))))
-                           (test-case "=="              (check-equal? (go/eval (== 1 2))     (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "== ..."          (check-equal? (go/eval (== 1 2 3))   (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case ">"               (check-equal? (go/eval (> 1 2))      (list (go:expr (go:operator '>  (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "> ..."           (check-equal? (go/eval (> 1 2 3))    (list (go:expr (go:operator '>  (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case "<"               (check-equal? (go/eval (< 1 2))      (list (go:expr (go:operator '<  (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "< ..."           (check-equal? (go/eval (< 1 2 3))    (list (go:expr (go:operator '<  (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case ">="              (check-equal? (go/eval (>= 1 2))     (list (go:expr (go:operator '>= (list (go:expr 1) (go:expr 2)))))))
-                           (test-case ">= ..."          (check-equal? (go/eval (>= 1 2 3))   (list (go:expr (go:operator '>= (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case "<="              (check-equal? (go/eval (<= 1 2))     (list (go:expr (go:operator '<= (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "<= ..."          (check-equal? (go/eval (<= 1 2 3))   (list (go:expr (go:operator '<= (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
+                           (test-case/operator (+ 1 2)       (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (+  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (-  1 2)      (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (-  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (%  1 2)      (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (%  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (*  1 2)      (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (*  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (/  1 2)      (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (/  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (++ 1)        (go:expr 1))
+                           (test-case/operator (-- 1)        (go:expr 1))
+                           (test-case/operator (== 1 2)      (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (== 1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (> 1 2)       (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (> 1 2 3)     (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (< 1 2)       (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (< 1 2 3)     (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (>= 1 2)      (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (>= 1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (<= 1 2)      (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (<= 1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
 
-                           (test-case "bitwise-and"             (check-equal? (go/eval (bitwise-and 1 2))           (list (go:expr (go:operator 'bitwise-and         (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "bitwise-and ..."         (check-equal? (go/eval (bitwise-and 1 2 3))         (list (go:expr (go:operator 'bitwise-and         (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case "bitwise-or"              (check-equal? (go/eval (bitwise-or 1 2))            (list (go:expr (go:operator 'bitwise-or          (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "bitwise-or ..."          (check-equal? (go/eval (bitwise-or 1 2 3))          (list (go:expr (go:operator 'bitwise-or          (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case "bitwise-xor"             (check-equal? (go/eval (bitwise-xor 1 2))           (list (go:expr (go:operator 'bitwise-xor         (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "bitwise-xor ..."         (check-equal? (go/eval (bitwise-xor 1 2 3))         (list (go:expr (go:operator 'bitwise-xor         (list (go:expr 1) (go:expr 2)  (go:expr 3)))))))
-                           (test-case "bitwise-left-shift"      (check-equal? (go/eval (bitwise-left-shift  1 2))   (list (go:expr (go:operator 'bitwise-left-shift  (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "bitwise-left-shift ..."  (check-equal? (go/eval (bitwise-left-shift  1 2 3)) (list (go:expr (go:operator 'bitwise-left-shift  (list (go:expr 1) (go:expr 2) (go:expr 3)))))))
-                           (test-case "bitwise-right-shift"     (check-equal? (go/eval (bitwise-right-shift 1 2))   (list (go:expr (go:operator 'bitwise-right-shift (list (go:expr 1) (go:expr 2)))))))
-                           (test-case "bitwise-right-shift ..." (check-equal? (go/eval (bitwise-right-shift 1 2 3)) (list (go:expr (go:operator 'bitwise-right-shift (list (go:expr 1) (go:expr 2) (go:expr 3))))))))
+                           (test-case/operator (bitwise-and 1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-and 1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (bitwise-or 1 2)             (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-or 1 2 3)           (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (bitwise-xor 1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-xor 1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (bitwise-left-shift  1 2)    (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-left-shift  1 2 3)  (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (bitwise-right-shift 1 2)    (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-right-shift 1 2 3)  (list (go:expr 1) (go:expr 2) (go:expr 3))))
 
                 (test-suite "type"
                             (check-equal? (go/eval (type X))
