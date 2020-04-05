@@ -652,8 +652,10 @@
                            (check-equal? (go/eval (type (slice   string)))   (list (go:expr (go:type (go:type-id 'slice (go:type-id:slice    (go:type-id 'string #f)))))))
                            (check-equal? (go/eval (type (array   string 5))) (list (go:expr (go:type (go:type-id 'array (go:type-id:array    (go:type-id 'string #f) 5))))))
                            (check-equal? (go/eval (type (ptr     string)))   (list (go:expr (go:type (go:type-id 'ptr   (go:type-id:ptr      (go:type-id 'string #f)))))))
+                           (check-equal? (go/eval (type (chan -> string)))   (list (go:expr (go:type (go:type-id 'chan  (go:type-id:chan '-> (go:type-id 'string #f)))))))
+                           (check-equal? (go/eval (type (chan <- string)))   (list (go:expr (go:type (go:type-id 'chan  (go:type-id:chan '<- (go:type-id 'string #f)))))))
                            (check-equal? (go/eval (type (chan    string)))   (list (go:expr (go:type (go:type-id 'chan  (go:type-id:chan #f  (go:type-id 'string #f)))))))
-                           (check-equal? (go/eval (type (chan -> string)))   (list (go:expr (go:type (go:type-id 'chan  (go:type-id:chan '-> (go:type-id 'string #f))))))))
+                           (check-equal? (go/eval (type (chan    (struct)))) (list (go:expr (go:type (go:type-id 'chan  (go:type-id:chan #f  (go:type-id 'struct (go:type-id:struct null)))))))))
 
                (test-suite "instance"
                            (check-equal? (go/eval (instance X))
