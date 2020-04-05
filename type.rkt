@@ -5,17 +5,17 @@
 (struct go:operator (id operands) #:prefab)
 
 (struct go:type                    (value)           #:prefab)
-(struct go:type-id:map             (key value)       #:prefab)
-(struct go:type-id:struct          (fields)          #:prefab)
-(struct go:type-id:struct:field    (name type tag)   #:prefab)
-(struct go:type-id:interface       (fields)          #:prefab)
-(struct go:type-id:interface:field (name type)       #:prefab)
-(struct go:type-id:slice           (type)            #:prefab)
-(struct go:type-id:array           (type size)       #:prefab)
-(struct go:type-id:ptr             (type)            #:prefab)
-(struct go:type-id:chan            (direction type)  #:prefab)
-(struct go:type-id:func            (input output)    #:prefab)
-(struct go:type-id                 (name parameters) #:prefab)
+(struct go:type:id:map             (key value)       #:prefab)
+(struct go:type:id:struct          (fields)          #:prefab)
+(struct go:type:id:struct:field    (name type tag)   #:prefab)
+(struct go:type:id:interface       (fields)          #:prefab)
+(struct go:type:id:interface:field (name type)       #:prefab)
+(struct go:type:id:slice           (type)            #:prefab)
+(struct go:type:id:array           (type size)       #:prefab)
+(struct go:type:id:ptr             (type)            #:prefab)
+(struct go:type:id:chan            (direction type)  #:prefab)
+(struct go:type:id:func            (input output)    #:prefab)
+(struct go:type:id                 (name parameters) #:prefab)
 
 (struct go:instance (type value) #:prefab)
 
@@ -31,11 +31,14 @@
 (struct go:imports (imports)         #:prefab)
 (struct go:import  (package altname) #:prefab)
 
-(struct go:func (name input output body) #:prefab)
+(struct go:func      (name input output body) #:prefab)
+(struct go:func:call (func arguments)         #:prefab)
 
 (struct go:var         (bindings)        #:prefab)
-(struct go:var-binding (name type value) #:prefab)
+(struct go:var:binding (name type value) #:prefab)
 (struct go:const       (bindings)        #:prefab)
+
+(struct go:routine (func) #:prefab)
 
 ;;
 
