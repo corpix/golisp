@@ -182,11 +182,13 @@
   (define-syntax-class Operator
     #:description "builtin operator"
     #:attributes (ast)
-    #:datum-literals (+ -
-                        % * /
-                        ++ --
-                        == > < >= <=
-                        bitwise-and bitwise-or bitwise-xor bitwise-left-shift bitwise-right-shift)
+    #:datum-literals
+    (+ - % * /
+       ++ --
+       == != > < >= <=
+       not
+       bitwise-and bitwise-or bitwise-xor
+       bitwise-left-shift bitwise-right-shift)
     (pattern ((~or* op:+ op:-) xs:Expr ...+)
              #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
@@ -197,10 +199,13 @@
     (pattern ((~or* op:++ op:--) xs:Expr)
              #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
-    (pattern ((~or* op:== op:> op:< op:>= op:<=) x:Expr xs:Expr ...+)
+    (pattern ((~or* op:== op:!= op:> op:< op:>= op:<=) x:Expr xs:Expr ...+)
              #:attr ast (go:operator (*->symbol (syntax op))
                                      (append (list (attribute x.ast))
                                              (attribute xs.ast))))
+    (pattern (op:not x:Expr)
+             #:attr ast (go:operator (*->symbol (syntax op))
+                                     (list (attribute x.ast))))
     (pattern ((~or* op:bitwise-and op:bitwise-or op:bitwise-xor
                     op:bitwise-left-shift op:bitwise-right-shift)
               x:Expr xs:Expr ...+)
@@ -553,39 +558,43 @@
   (for
       ((suite (list
                (test-suite "operator"
-                           (test-case/operator (+  1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (+  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (-  1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (-  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (%  1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (%  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (*  1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (*  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (/  1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (/  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (++ 1)        (go:expr 1))
-                           (test-case/operator (-- 1)        (go:expr 1))
-                           (test-case/operator (== 1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (== 1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (>  1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (>  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (<  1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (<  1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (>= 1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (>= 1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (<= 1 2)      (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (<= 1 2 3)    (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (+  1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (+  1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (-  1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (-  1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (%  1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (%  1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (*  1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (*  1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (/  1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (/  1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (++ 1)              (go:expr 1))
+                           (test-case/operator (-- 1)              (go:expr 1))
+                           (test-case/operator (== 1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (== 1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (!= 1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (!= 1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (not (== 1 2))      (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))))
+                           (test-case/operator (not (== 1 2 3))    (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
+                           (test-case/operator (>  1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (>  1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (<  1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (<  1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (>= 1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (>= 1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (<= 1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (<= 1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
 
-                           (test-case/operator (bitwise-and         1 2)    (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-and         1 2 3)  (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (bitwise-or          1 2)    (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-or          1 2 3)  (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (bitwise-xor         1 2)    (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-xor         1 2 3)  (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (bitwise-left-shift  1 2)    (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-left-shift  1 2 3)  (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (bitwise-right-shift 1 2)    (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-right-shift 1 2 3)  (list (go:expr 1) (go:expr 2) (go:expr 3))))
+                           (test-case/operator (bitwise-and 1 2)           (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-and 1 2 3)         (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (bitwise-or 1 2)            (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-or 1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (bitwise-xor 1 2)           (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-xor 1 2 3)         (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (bitwise-left-shift 1 2)    (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-left-shift 1 2 3)  (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator (bitwise-right-shift 1 2)   (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator (bitwise-right-shift 1 2 3) (list (go:expr 1) (go:expr 2) (go:expr 3))))
 
                (test-suite "type"
                            (check-equal? (go/eval (type X))
