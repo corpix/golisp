@@ -4,6 +4,11 @@
 
 (struct go:operator (id operands) #:prefab)
 
+(struct go:instance (type value) #:prefab)
+
+(struct go:def (id expr) #:prefab)
+(struct go:set (id expr) #:prefab)
+
 (struct go:type                    (value)           #:prefab)
 (struct go:type:id:map             (key value)       #:prefab)
 (struct go:type:id:struct          (fields)          #:prefab)
@@ -16,13 +21,6 @@
 (struct go:type:id:chan            (direction type)  #:prefab)
 (struct go:type:id:func            (input output)    #:prefab)
 (struct go:type:id                 (name parameters) #:prefab)
-
-(struct go:instance (type value) #:prefab)
-
-;;
-
-(struct go:def (id expr) #:prefab)
-(struct go:set (id expr) #:prefab)
 
 ;;
 
@@ -38,7 +36,9 @@
 (struct go:var:binding (name type value) #:prefab)
 (struct go:const       (bindings)        #:prefab)
 
-(struct go:routine (func) #:prefab)
+(struct go:go  (func)                #:prefab)
+(struct go:if  (condition then else) #:prefab)
+(struct go:for (vars seq body)       #:prefab)
 
 ;;
 

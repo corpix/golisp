@@ -464,7 +464,36 @@
     #:attributes (ast)
     #:datum-literals (go)
     (pattern (go r:FuncCall)
-             #:attr ast (go:routine (attribute r.ast))))
+             #:attr ast (go:go (attribute r.ast))))
+
+  ;;
+
+  (define-syntax-class If
+    #:description "if statement"
+    #:attributes (ast)
+    #:datum-literals (if)
+    (pattern (if condition:Expr then:Expr
+                 (~optional else:Expr #:defaults ((else (syntax #f)))))
+             #:attr ast (go:if (attribute condition.ast)
+                               (attribute then.ast)
+                               (attribute else.ast))))
+
+  ;;
+
+  (define-syntax-class For
+    #:description "for statement"
+    #:attributes (ast)
+    #:datum-literals (for)
+    (pattern (for (vars:ForVars seq:Expr) body:Expr ...+)
+             #:attr ast (go:for (attribute vars.ast)
+                                (attribute seq.ast)
+                                (attribute body.ast))))
+
+  (define-syntax-class ForVars
+    #:description "for statement variable bindings"
+    #:attributes (ast)
+    (pattern (vars:id ...+) #:attr ast (syntax->list (syntax (vars ...))))
+    (pattern vars:id        #:attr ast (list (syntax->datum (syntax vars)))))
 
   ;;
 
@@ -474,7 +503,8 @@
     #:datum-literals (nil)
     (pattern (~or* v:Package v:Import v:Var v:Type v:Instance
                    v:Operator v:Type v:Instance v:Def v:Set
-                   v:Go v:Func)
+                   v:Go v:If v:For
+                   v:Func)
              #:attr ast (go:expr (attribute v.ast)))
     (pattern (~or* v:id
                    v:boolean
@@ -485,6 +515,10 @@
     (pattern v:FuncCall #:attr ast (go:expr (attribute v.ast)))))
 
 ;;
+
+(define-gosyntax (instance stx) (syntax-parse stx (instance:Instance (attribute instance.ast))))
+(define-gosyntax (def stx)      (syntax-parse stx (def:Def (attribute def.ast))))
+(define-gosyntax (set stx)      (syntax-parse stx (set:Set (attribute set.ast))))
 
 ;; XXX: one of the bad sideffect of inline literals in syntax classes
 ;; is that things like this now should have some wrapper which will eval it
@@ -497,12 +531,8 @@
 (define-gosyntax (func stx)    (syntax-parse stx (func:Func (attribute func.ast))))
 (define-gosyntax (var stx)     (syntax-parse stx (var:Var (attribute var.ast))))
 (define-gosyntax (go stx)      (syntax-parse stx (go:Go (attribute go.ast))))
-
-;;
-
-(define-gosyntax (instance stx) (syntax-parse stx (instance:Instance (attribute instance.ast))))
-(define-gosyntax (def stx)      (syntax-parse stx (def:Def (attribute def.ast))))
-(define-gosyntax (set stx)      (syntax-parse stx (set:Set (attribute set.ast))))
+(define-gosyntax (if stx)      (syntax-parse stx (if:If (attribute if.ast))))
+(define-gosyntax (for stx)     (syntax-parse stx (for:For (attribute for.ast))))
 
 ;;
 
@@ -860,6 +890,42 @@
                                          (list (go:expr
                                                 (go:func:call 'go (list (go:expr (go:func #f null null null))))))))
 
+               (test-suite "if"
+                           (check-equal? (go/eval (if (== 1 1) (fmt.Println "ok")))
+                                         (list (go:expr
+                                                (go:if
+                                                 (go:expr (go:operator  '==          (list (go:expr 1) (go:expr 1))))
+                                                 (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
+                                                 #f))))
+                           (check-equal? (go/eval (if (== 1 1) (fmt.Println "ok") (fmt.Println "not ok")))
+                                         (list (go:expr
+                                                (go:if
+                                                 (go:expr (go:operator  '==          (list (go:expr 1) (go:expr 1))))
+                                                 (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
+                                                 (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok"))))))))
+                           (check-equal? (go/eval (if (== 1 1) (fmt.Println "ok") (fmt.Println "not ok")))
+                                         (list (go:expr
+                                                (go:if
+                                                 (go:expr (go:operator  '==          (list (go:expr 1) (go:expr 1))))
+                                                 (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
+                                                 (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok")))))))))
+               (test-suite "for"
+                           (check-equal? (go/eval (for ((k v) (instance (slice int) 1 2 3)) (fmt.Println k v)))
+                                         (list (go:expr (go:for
+                                                         (list 'k 'v)
+                                                         (go:expr
+                                                          (go:instance
+                                                           (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
+                                                           (list (go:expr 1) (go:expr 2) (go:expr 3))))
+                                                         (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))))
+                           (check-equal? (go/eval (for (k (instance (slice int) 1 2 3)) (fmt.Println k)))
+                                         (list (go:expr (go:for
+                                                         (list 'k)
+                                                         (go:expr
+                                                          (go:instance
+                                                           (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
+                                                           (list (go:expr 1) (go:expr 2) (go:expr 3))))
+                                                         (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k))))))))))
                ;; other expression cases
 
                (test-suite "dummy"
