@@ -497,13 +497,34 @@
 
   ;;
 
+  (define-syntax-class Switch
+    #:description "switch statement"
+    #:attributes (ast)
+    #:datum-literals (switch)
+    (pattern (switch value:Expr cases:SwitchCase ...+)
+             #:attr ast (go:switch (attribute value.ast)
+                                   (attribute cases.ast))))
+
+  (define-syntax-class SwitchCase
+    #:description "switch statement case"
+    #:attributes (ast)
+    #:datum-literals (default)
+    (pattern (default body:Expr ...)
+             #:attr ast (go:switch:case 'default
+                                        (attribute body.ast)))
+    (pattern (pred:Expr body:Expr ...)
+             #:attr ast (go:switch:case (attribute pred.ast)
+                                        (attribute body.ast))))
+
+  ;;
+
   (define-splicing-syntax-class Expr
     #:description "expression"
     #:attributes (ast)
     #:datum-literals (nil)
     (pattern (~or* v:Package v:Import v:Var v:Type v:Instance
                    v:Operator v:Type v:Instance v:Def v:Set
-                   v:Go v:If v:For
+                   v:Go v:If v:For v:Switch
                    v:Func)
              #:attr ast (go:expr (attribute v.ast)))
     (pattern (~or* v:id
@@ -533,6 +554,7 @@
 (define-gosyntax (go stx)      (syntax-parse stx (go:Go (attribute go.ast))))
 (define-gosyntax (if stx)      (syntax-parse stx (if:If (attribute if.ast))))
 (define-gosyntax (for stx)     (syntax-parse stx (for:For (attribute for.ast))))
+(define-gosyntax (switch stx)  (syntax-parse stx (switch:Switch (attribute switch.ast))))
 
 ;;
 
@@ -926,6 +948,37 @@
                                                            (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
                                                            (list (go:expr 1) (go:expr 2) (go:expr 3))))
                                                          (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k))))))))))
+               (test-suite "switch"
+                           (check-equal? (go/eval (switch 1
+                                                          (1 (fmt.Println "one"))
+                                                          (2 (fmt.Println "two"))
+                                                          (default (fmt.Println "default"))))
+                                         (list (go:expr
+                                                (go:switch (go:expr 1)
+                                                           (list (go:switch:case
+                                                                  (go:expr 1)
+                                                                  (list (go:expr (go:func:call 'fmt.Println (list (go:expr "one"))))))
+                                                                 (go:switch:case
+                                                                  (go:expr 2)
+                                                                  (list (go:expr (go:func:call 'fmt.Println (list (go:expr "two"))))))
+                                                                 (go:switch:case
+                                                                  'default
+                                                                  (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default")))))))))))
+                           (check-equal? (go/eval (switch (+ 1 1)
+                                                          (1 (fmt.Println "one"))
+                                                          (2 (fmt.Println "two"))
+                                                          (default (fmt.Println "default"))))
+                                         (list (go:expr
+                                                (go:switch (go:expr (go:operator '+ (list (go:expr 1) (go:expr 1))))
+                                                           (list (go:switch:case
+                                                                  (go:expr 1)
+                                                                  (list (go:expr (go:func:call 'fmt.Println (list (go:expr "one"))))))
+                                                                 (go:switch:case
+                                                                  (go:expr 2)
+                                                                  (list (go:expr (go:func:call 'fmt.Println (list (go:expr "two"))))))
+                                                                 (go:switch:case
+                                                                  'default
+                                                                  (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default"))))))))))))
                ;; other expression cases
 
                (test-suite "dummy"

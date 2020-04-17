@@ -36,9 +36,11 @@
 (struct go:var:binding (name type value) #:prefab)
 (struct go:const       (bindings)        #:prefab)
 
-(struct go:go  (func)                #:prefab)
-(struct go:if  (condition then else) #:prefab)
-(struct go:for (vars seq body)       #:prefab)
+(struct go:go          (func)                #:prefab)
+(struct go:if          (condition then else) #:prefab)
+(struct go:for         (vars seq body)       #:prefab)
+(struct go:switch      (value cases)         #:prefab)
+(struct go:switch:case (predicate body)      #:prefab)
 
 ;;
 
