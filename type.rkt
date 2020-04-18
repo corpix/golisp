@@ -40,7 +40,17 @@
 (struct go:if          (condition then else) #:prefab)
 (struct go:for         (vars seq body)       #:prefab)
 (struct go:switch      (value cases)         #:prefab)
-(struct go:switch:case (predicate body)      #:prefab)
+(struct go:select      (cases)               #:prefab)
+(struct go:case        (predicate body)      #:prefab)
+(struct go:cast        (value type)          #:prefab)
+(struct go:cast:assert (type)                #:prefab)
+(struct go:return      (values)              #:prefab)
+(struct go:break       (label)               #:prefab)
+(struct go:continue    (label)               #:prefab)
+(struct go:label       (name body)           #:prefab)
+(struct go:goto        (label)               #:prefab)
+(struct go:iota        ()                    #:prefab)
+(struct go:defer       (body)                #:prefab)
 
 ;;
 
