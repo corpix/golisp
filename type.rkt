@@ -2,12 +2,18 @@
 (provide (all-defined-out)
          (for-syntax (all-defined-out)))
 
+;;
+
 (struct go:operator (id operands) #:prefab)
 
-(struct go:instance (type value) #:prefab)
+(struct go:package (name) #:prefab)
 
-(struct go:def (id expr) #:prefab)
-(struct go:set (id expr) #:prefab)
+(struct go:imports (imports)         #:prefab)
+(struct go:import  (package altname) #:prefab)
+
+(struct go:var         (bindings)        #:prefab)
+(struct go:var:binding (name type value) #:prefab)
+(struct go:const       (bindings)        #:prefab)
 
 (struct go:type                    (value)           #:prefab)
 (struct go:type:id:map             (key value)       #:prefab)
@@ -22,26 +28,19 @@
 (struct go:type:id:func            (input output)    #:prefab)
 (struct go:type:id                 (name parameters) #:prefab)
 
-;;
+(struct go:instance (type value) #:prefab)
 
-(struct go:package (name) #:prefab)
-
-(struct go:imports (imports)         #:prefab)
-(struct go:import  (package altname) #:prefab)
-
-(struct go:func      (name input output body) #:prefab)
-(struct go:func:call (func arguments)         #:prefab)
-
-(struct go:var         (bindings)        #:prefab)
-(struct go:var:binding (name type value) #:prefab)
-(struct go:const       (bindings)        #:prefab)
+(struct go:def (id expr) #:prefab)
+(struct go:set (id expr) #:prefab)
 
 (struct go:go          (func)                #:prefab)
 (struct go:if          (condition then else) #:prefab)
 (struct go:for         (vars seq body)       #:prefab)
+
 (struct go:switch      (value cases)         #:prefab)
 (struct go:select      (cases)               #:prefab)
 (struct go:case        (predicate body)      #:prefab)
+
 (struct go:cast        (value type)          #:prefab)
 (struct go:cast:assert (type)                #:prefab)
 (struct go:return      (values)              #:prefab)
@@ -51,6 +50,17 @@
 (struct go:goto        (label)               #:prefab)
 (struct go:iota        ()                    #:prefab)
 (struct go:defer       (body)                #:prefab)
+(struct go:slice       (value start end)     #:prefab)
+(struct go:index       (value key)           #:prefab)
+(struct go:send        (chan value)          #:prefab)
+(struct go:receive     (chan)                #:prefab)
+(struct go:inc         (id)                  #:prefab)
+(struct go:dec         (id)                  #:prefab)
+(struct go:ref         (expr)                #:prefab)
+(struct go:deref       (expr)                #:prefab)
+
+(struct go:func      (name input output body) #:prefab)
+(struct go:func:call (func arguments)         #:prefab)
 
 ;;
 

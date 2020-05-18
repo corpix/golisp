@@ -1,6 +1,5 @@
 #lang racket/base
-(require racket/base
-         racket/bool
+(require racket/bool
          racket/match
          syntax/parse
          racket/string
@@ -8,7 +7,6 @@
          racket/set
          racket/list
          racket/syntax
-         "type.rkt"
          "macro.rkt"
          "tool.rkt"
          (for-syntax racket/base
@@ -19,19 +17,9 @@
                      "macro.rkt"
                      "tool.rkt"))
 
-(provide (all-from-out "type.rkt")
-         (all-defined-out)
-         (for-syntax (all-from-out "type.rkt")
-                     (all-from-out "macro.rkt")
+(provide (all-defined-out)
+         (for-syntax (all-from-out "macro.rkt")
                      (all-defined-out)))
-
-;;
-
-(define +new-line+ "\n")
-(define +tab+      "\t")
-(define +comma+    ", ")
-(define +set+      " = ")
-(define +space+    " ")
 
 (begin-for-syntax
   (define *prelude*  (make-parameter (box null)))
@@ -60,121 +48,19 @@
                           (lambda caller-args
                             (eval (cons (quote go/name) caller-args) ns))))))))))
 
-;;
-
-(define (emit-package ast)
-  (match ast
-    ((go:package name)
-     (format "package ~a" name))))
-
-(define (emit-imports ast)
-  (match ast
-    ((go:imports imports)
-     (format (string-append "import (" +new-line+ +tab+ "~a" +new-line+ ")")
-             (string-join (map emit-imports imports)
-                          (string-append +new-line+ +tab+))))
-    ((go:import package altname)
-     (string-append
-      (if altname
-          (string-append (*->string altname) +space+)
-          "")
-      (~s package)))))
-
-(define (emit-func ast)
-  (match ast
-    ((go:func name i o body)
-     (string-append "func" +space+
-                    (*->string name)       (emit-var-bindings (or i null))
-                    +space+                (emit-var-bindings (or o null))
-                    +space+ "{" +new-line+ (emit (expand-macro body)) +new-line+ "}"))))
-
-(define (emit-var ast)
-  (match ast
-    ((go:var bindings)
-     (string-append "var" +space+ (emit-var-bindings bindings)))))
-
-;;
-
-(define (emit-var-bindings ast)
-  (match ast
-    ((and (list ast ...) (list (? go:var:binding?) ...))
-     (string-append "(" (string-join (map emit-var-bindings ast) +comma+) ")"))
-
-    ((go:var:binding (? false?) type _)
-     (~a type))
-
-    ((go:var:binding name type value)
-     (string-append
-      (symbol->string name)
-      ;; FIXME: type is more complex now, so this is a bug potentially
-      (or (string-append +space+ (~a type)) "")
-      (or (and value
-               (string-append +set+
-                              (emit (expand-macro value))))
-          "")))))
-
-(define (emit-tuple ast)
-  (let ((concat
-         (lambda (v)
-           (format "~a ~a"
-                   (car v)
-                   (cdr v)))))
-    (match ast
-      ((and (list ast ...) (list (? pair?) ...))
-       (string-append
-        "(" (string-join (map concat ast) +comma+) ")"))
-      ((and (list ast ...) (list (? symbol?) ...))
-       (string-append
-        "(" (string-join (map symbol->string ast) +comma+) ")")))))
-
-(define (emit-id ast)
-  (~a ast))
-
-(define (emit-string ast)
-  (~s ast))
-
-(define (emit-number ast)
-  (~a ast))
-
-(define (emit-expr ast)
-  (displayln ast)
-  (match ast
-    ((go:expr xs) (emit-expr (expand-macro xs)))
-
-    ((? go:package? ast) (emit-package  ast))
-    ((? go:imports? ast) (emit-imports  ast))
-    ((? go:func?    ast) (emit-func     ast))
-    ((? go:expr?    ast) (emit-expr     ast))
-
-    ((? go:var?     ast)     (emit-var          ast))
-    ((? go:var:binding? ast) (emit-var-bindings ast))
-
-
-    ((? symbol? ast) (emit-id (symbol->string ast)))
-    ((? string? ast) (emit-string ast))
-    ((? number? ast) (emit-number ast))
-
-    ((? (lambda (v) (and (list? v)
-                         (not (empty? v))
-                         (symbol? (car v))))
-        ast)
-     (format "~a(~a)"
-             (car ast)
-             (string-join (map emit-expr (cdr ast))
-                          +comma+)))
-
-    ((? list? ast)
-     (string-join
-      (map emit-expr ast)
-      +new-line+))))
-
-(define emit emit-expr)
-
-;;
-
-;; (define-syntax (: stx)
-;;   (syntax-parse stx
-;;     ((_ xs:Colon) #`(go:group (quasiquote #,(attribute xs.ast))))))
+(define-syntax (define-gosyntax-class-map stx)
+  (syntax-parse stx
+    ((_ (name:id class:id) ...+)
+     (quasisyntax
+      (begin
+        (unsyntax-splicing
+         (for/list ((sxs (syntax->list (syntax ((name class) ...)))))
+           (let ((xs (apply cons (syntax->datum sxs))))
+             (with-syntax ((id         (car xs))
+                           (name:class (format-id stx "~a:~a"  (car xs) (cdr xs)))
+                           (ast        (format-id stx "~a.ast" (car xs))))
+               (syntax (define-gosyntax (id s)
+                         (syntax-parse s (name:class (attribute ast))))))))))))))
 
 ;;
 
@@ -184,33 +70,47 @@
     #:attributes (ast)
     #:datum-literals
     (+ - % * /
-       ++ --
        == != > < >= <=
-       not and or
-       bitwise-and bitwise-or bitwise-xor
-       bitwise-left-shift bitwise-right-shift)
+       ! not
+       && and
+       || or
+       bitwise-and ;; | is a reader in racket, so & | are problematic
+       bitwise-or
+       ^  bitwise-xor
+       << bitwise-left-shift
+       >> bitwise-right-shift)
     (pattern ((~or* op:+ op:-) xs:Expr ...+)
              #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
     (pattern ((~or* op:% op:* op:/) xs:Expr ...+)
              #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
-    (pattern ((~or* op:++ op:--) xs:Expr)
-             #:attr ast (go:operator (*->symbol (syntax op))
-                                     (attribute xs.ast)))
     (pattern ((~or* op:== op:!= op:> op:< op:>= op:<=) xs:Expr ...+)
              #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
-    (pattern (op:not x:Expr)
-             #:attr ast (go:operator (*->symbol (syntax op))
+    (pattern ((~or* ! not) x:Expr)
+             #:attr ast (go:operator (*->symbol (syntax !))
                                      (list (attribute x.ast))))
-    (pattern ((~or* op:and op:or) xs:Expr ...+)
-             #:attr ast (go:operator (*->symbol (syntax op))
+    (pattern ((~or* && and) xs:Expr ...+)
+             #:attr ast (go:operator (*->symbol (syntax &&))
                                      (attribute xs.ast)))
-    (pattern ((~or* op:bitwise-and op:bitwise-or op:bitwise-xor
-                    op:bitwise-left-shift op:bitwise-right-shift)
-              xs:Expr ...+)
-             #:attr ast (go:operator (*->symbol (syntax op))
+    (pattern ((~or* || or) xs:Expr ...+)
+             #:attr ast (go:operator (*->symbol (syntax ||))
+                                     (attribute xs.ast)))
+    (pattern (bitwise-and xs:Expr ...+)
+             #:attr ast (go:operator (*->symbol (syntax &))
+                                     (attribute xs.ast)))
+    (pattern (bitwise-or xs:Expr ...+)
+             #:attr ast (go:operator (*->symbol (syntax \|))
+                                     (attribute xs.ast)))
+    (pattern ((~or* ^ bitwise-xor) xs:Expr ...+)
+             #:attr ast (go:operator (*->symbol (syntax ^))
+                                     (attribute xs.ast)))
+    (pattern ((~or* << bitwise-left-shift) xs:Expr ...+)
+             #:attr ast (go:operator (*->symbol (syntax <<))
+                                     (attribute xs.ast)))
+    (pattern ((~or* >> bitwise-right-shift) xs:Expr ...+)
+             #:attr ast (go:operator (*->symbol (syntax >>))
                                      (attribute xs.ast))))
 
   ;;
@@ -600,45 +500,132 @@
 
   ;;
 
+  (define-syntax-class Slice
+    #:description "slicing expression"
+    #:attributes (ast)
+    #:datum-literals (slice)
+    (pattern (slice value:Expr
+                    start:Expr
+                    (~optional end:Expr
+                               #:defaults ((end (syntax #f)))))
+             #:attr ast (go:slice (attribute value.ast)
+                                  (attribute start.ast)
+                                  (attribute end.ast))))
+
+  (define-syntax-class Index
+    #:description "index expression"
+    #:attributes (ast)
+    #:datum-literals (index)
+    (pattern (index value:Expr key:Expr)
+             #:attr ast (go:index (attribute value.ast)
+                                  (attribute key.ast))))
+
+  ;;
+
+  (define-syntax-class Send
+    #:description "channel send expression"
+    #:attributes (ast)
+    #:datum-literals (send ->)
+    (pattern ((~or* send ->) chan:Expr value:Expr)
+             #:attr ast (go:send (attribute chan.ast)
+                                 (attribute value.ast))))
+
+  (define-syntax-class Receive
+    #:description "channel receive expression"
+    #:attributes (ast)
+    #:datum-literals (receive <-)
+    (pattern ((~or* receive <-) chan:Expr)
+             #:attr ast (go:receive (attribute chan.ast))))
+
+  ;;
+
+  (define-syntax-class Inc
+    #:description "increment identifier value"
+    #:attributes (ast)
+    #:datum-literals (inc ++)
+    (pattern ((~or* inc ++) id:id)
+             #:attr ast (go:inc (*->symbol (syntax id)))))
+
+  (define-syntax-class Dec
+    #:description "decrement identifier value"
+    #:attributes (ast)
+    #:datum-literals (dec --)
+    (pattern ((~or* dec --) id:id)
+             #:attr ast (go:dec (*->symbol (syntax id)))))
+
+  ;;
+
+  (define-syntax-class Ref
+    #:description "reference (get a pointer) of the expression"
+    #:attributes (ast)
+    #:datum-literals (ref)
+    (pattern (ref ex:Expr)
+             #:attr ast (go:ref (attribute ex.ast))))
+
+  (define-syntax-class Deref
+    #:description "dereference (get a pointer) of the expression"
+    #:attributes (ast)
+    #:datum-literals (deref)
+    (pattern (deref ex:Expr)
+             #:attr ast (go:deref (attribute ex.ast))))
+
+  ;;
+
   (define-splicing-syntax-class Expr
     #:description "expression"
     #:attributes (ast)
     #:datum-literals (nil)
-    (pattern (~or* v:Package  v:Import v:Var      v:Type     v:Instance
-                   v:Operator v:Type   v:Instance v:Def      v:Set
-                   v:Go       v:If     v:For      v:Switch   v:Select
-                   v:Cast     v:Return v:Break    v:Continue v:Label
-                   v:Goto     v:Iota   v:Defer
+    (pattern (~or* v:Operator
+                   v:Package  v:Import   v:Var
+                   v:Type     v:Instance
+                   v:Def      v:Set      v:Go
+                   v:If       v:For
+                   v:Switch   v:Select
+                   v:Cast     v:Return   v:Break  v:Continue v:Label
+                   v:Goto     v:Iota     v:Defer
+                   v:Slice    v:Index
+                   v:Send     v:Receive
+                   v:Inc      v:Dec
+                   v:Ref      v:Deref
                    v:Func)
              #:attr ast (go:expr (attribute v.ast)))
-    (pattern (~or* v:id v:boolean v:number v:string
-                   nil)
+    (pattern (~or* v:id v:boolean v:number v:string v:nil)
              #:attr ast (go:expr (syntax->datum (syntax v))))
-    (pattern v:FuncCall
+    (pattern v:FuncCall ;; NOTE: Func class should be the last pattern, it acts as a catch-all for sexp's
              #:attr ast (go:expr (attribute v.ast)))))
 
 ;;
 
-(define-gosyntax (instance stx) (syntax-parse stx (instance:Instance (attribute instance.ast))))
-(define-gosyntax (def stx)      (syntax-parse stx (def:Def           (attribute def.ast))))
-(define-gosyntax (set stx)      (syntax-parse stx (set:Set           (attribute set.ast))))
-(define-gosyntax (type stx)     (syntax-parse stx (type:Type         (attribute type.ast))))
-(define-gosyntax (package stx)  (syntax-parse stx (pkg:Package       (attribute pkg.ast))))
-(define-gosyntax (import stx)   (syntax-parse stx (import:Import     (attribute import.ast))))
-(define-gosyntax (func stx)     (syntax-parse stx (func:Func         (attribute func.ast))))
-(define-gosyntax (var stx)      (syntax-parse stx (var:Var           (attribute var.ast))))
-(define-gosyntax (go stx)       (syntax-parse stx (go:Go             (attribute go.ast))))
-(define-gosyntax (if stx)       (syntax-parse stx (if:If             (attribute if.ast))))
-(define-gosyntax (for stx)      (syntax-parse stx (for:For           (attribute for.ast))))
-(define-gosyntax (switch stx)   (syntax-parse stx (switch:Switch     (attribute switch.ast))))
-(define-gosyntax (select stx)   (syntax-parse stx (select:Select     (attribute select.ast))))
-(define-gosyntax (cast stx)     (syntax-parse stx (cast:Cast         (attribute cast.ast))))
-(define-gosyntax (return stx)   (syntax-parse stx (return:Return     (attribute return.ast))))
-(define-gosyntax (break stx)    (syntax-parse stx (break:Break       (attribute break.ast))))
-(define-gosyntax (continue stx) (syntax-parse stx (continue:Continue (attribute continue.ast))))
-(define-gosyntax (label stx)    (syntax-parse stx (label:Label       (attribute label.ast))))
-(define-gosyntax (goto stx)     (syntax-parse stx (goto:Goto         (attribute goto.ast))))
-(define-gosyntax (iota stx)     (syntax-parse stx (iota:Iota         (attribute iota.ast))))
+(define-gosyntax-class-map
+  (package  Package)
+  (import   Import)
+  (var      Var)
+  (type     Type)
+  (instance Instance)
+  (def      Def)
+  (set      Set)
+  (go       Go)
+  (if       If)
+  (for      For)
+  (switch   Switch)
+  (select   Select)
+  (cast     Cast)
+  (return   Return)
+  (break    Break)
+  (continue Continue)
+  (label    Label)
+  (goto     Goto)
+  (iota     Iota)
+  (defer    Defer)
+  (slice    Slice)
+  (index    Index)
+  (send     Send)
+  (receive  Receive)
+  (inc      Inc)
+  (dec      Dec)
+  (ref      Ref)
+  (deref    Deref)
+  (func     Func))
 
 ;;
 
@@ -662,7 +649,7 @@
                  (append (unbox (*epilogue*))
                          (expand-macro (attribute xs.ast))))))))
 
-(define-syntax (go/eval stx)
+(define-syntax (go/expand stx)
   (syntax-parse stx
     ((_ ex:Expr ...+)
      (parameterize
@@ -678,80 +665,137 @@
          (with-syntax ((ast ast))
            (syntax (quote ast))))))))
 
-(define (go/string instr) (emit instr))
-
 (module+ test
-  (require rackunit rackunit/text-ui)
+  (require rackunit
+           rackunit/text-ui
+
+           "type.rkt")
 
   (define-syntax (test-case/operator stx)
     (syntax-parse stx
-      ((_ e:expr r:expr)
-       (with-syntax ((operator (car (syntax->list (syntax e)))))
-         (syntax (test-case (symbol->string (quote operator))
-                   (check-equal? (go/eval e)
-                                 (list (go:expr (go:operator (quote operator) r))))))))))
+      ((_ op:id e:expr r:expr)
+       (syntax (test-case (symbol->string (quote operator))
+                 (check-equal? (go/expand e)
+                               (list (go:expr (go:operator (quote op) r)))))))))
 
   (for
       ((suite (list
                (test-suite "operator"
-                           (test-case/operator (+  1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (+  1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (-  1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (-  1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (%  1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (%  1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (*  1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (*  1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (/  1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (/  1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (++ 1)                   (go:expr 1))
-                           (test-case/operator (-- 1)                   (go:expr 1))
-                           (test-case/operator (== 1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (== 1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (!= 1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (!= 1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-
-                           (test-case/operator (not (== 1 2))           (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))))
-                           (test-case/operator (not (== 1 2 3))         (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
-
-                           (test-case/operator (or (== 1 2) (== 2 2))   (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))
-                                                                              (go:expr (go:operator '== (list (go:expr 2) (go:expr 2))))))
-                           (test-case/operator (or (== 1 2 3))          (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
-
-                           (test-case/operator (and (== 1 2) (== 2 2))  (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))
-                                                                              (go:expr (go:operator '== (list (go:expr 2) (go:expr 2))))))
-                           (test-case/operator (and (== 1 2 3))         (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
-
-                           (test-case/operator (>  1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (>  1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (<  1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (<  1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (>= 1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (>= 1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (<= 1 2)                 (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (<= 1 2 3)               (list (go:expr 1) (go:expr 2) (go:expr 3)))
-
-                           (test-case/operator (bitwise-and 1 2)           (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-and 1 2 3)         (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (bitwise-or 1 2)            (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-or 1 2 3)          (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (bitwise-xor 1 2)           (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-xor 1 2 3)         (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (bitwise-left-shift 1 2)    (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-left-shift 1 2 3)  (list (go:expr 1) (go:expr 2) (go:expr 3)))
-                           (test-case/operator (bitwise-right-shift 1 2)   (list (go:expr 1) (go:expr 2)))
-                           (test-case/operator (bitwise-right-shift 1 2 3) (list (go:expr 1) (go:expr 2) (go:expr 3))))
+                           (test-case/operator + (+  1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator + (+  1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator - (-  1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator - (-  1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator % (%  1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator % (%  1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator * (*  1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator * (*  1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator / (/  1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator / (/  1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator == (== 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator == (== 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator != (!= 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator != (!= 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator ! (not (== 1 2))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))))
+                           (test-case/operator ! (! (== 1 2))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))))
+                           (test-case/operator ! (not (== 1 2 3))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
+                           (test-case/operator ! (! (== 1 2 3))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
+                           (test-case/operator || (or (== 1 2) (== 2 2))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))
+                                                     (go:expr (go:operator '== (list (go:expr 2) (go:expr 2))))))
+                           (test-case/operator || (|| (== 1 2) (== 2 2))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))
+                                                     (go:expr (go:operator '== (list (go:expr 2) (go:expr 2))))))
+                           (test-case/operator || (or (== 1 2 3))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
+                           (test-case/operator || (|| (== 1 2 3))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
+                           (test-case/operator && (and (== 1 2) (== 2 2))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))
+                                                     (go:expr (go:operator '== (list (go:expr 2) (go:expr 2))))))
+                           (test-case/operator && (&& (== 1 2) (== 2 2))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2))))
+                                                     (go:expr (go:operator '== (list (go:expr 2) (go:expr 2))))))
+                           (test-case/operator && (and (== 1 2 3))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
+                           (test-case/operator && (&& (== 1 2 3))
+                                               (list (go:expr (go:operator '== (list (go:expr 1) (go:expr 2) (go:expr 3))))))
+                           (test-case/operator > (>  1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator > (>  1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator < (<  1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator < (<  1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator >= (>= 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator >= (>= 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator <= (<= 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator <= (<= 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator & (bitwise-and 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator & (bitwise-and 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator \| (bitwise-or 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator \| (bitwise-or 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator ^ (bitwise-xor 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator ^ (^ 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator ^ (bitwise-xor 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator ^ (^ 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator << (bitwise-left-shift 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator << (<< 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator << (bitwise-left-shift 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator << (<< 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator >> (bitwise-right-shift 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator >> (>> 1 2)
+                                               (list (go:expr 1) (go:expr 2)))
+                           (test-case/operator >> (bitwise-right-shift 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))
+                           (test-case/operator >> (>> 1 2 3)
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3))))
 
                (test-suite "type"
                            (check-equal?
-                            (go/eval (type X))
+                            (go/expand (type X))
                             (list (go:expr (go:type (go:type:id 'X #f)))))
                            (check-equal?
-                            (go/eval (type (map string string)))
+                            (go/expand (type (map string string)))
                             (list (go:expr (go:type (go:type:id 'map (go:type:id:map (go:type:id 'string #f)
                                                                                      (go:type:id 'string #f)))))))
                            (check-equal?
-                            (go/eval (type (map string (map int X))))
+                            (go/expand (type (map string (map int X))))
                             (list (go:expr
                                    (go:type (go:type:id 'map (go:type:id:map
                                                               (go:type:id 'string #f)
@@ -760,7 +804,7 @@
                                                                            (go:type:id 'int #f)
                                                                            (go:type:id 'X #f)))))))))
                            (check-equal?
-                            (go/eval (type (struct io.Reader (x (map string string)) (y X))))
+                            (go/expand (type (struct io.Reader (x (map string string)) (y X))))
                             (list (go:expr
                                    (go:type (go:type:id 'struct (go:type:id:struct
                                                                  (list (go:type:id:struct:field #f (go:type:id 'io.Reader #f) #f)
@@ -770,19 +814,19 @@
                                                                                                 #f)
                                                                        (go:type:id:struct:field 'y (go:type:id 'X #f) #f))))))))
                            (check-equal?
-                            (go/eval (type (interface io.Reader (x (func ())))))
+                            (go/expand (type (interface io.Reader (x (func ())))))
                             (list (go:expr (go:type (go:type:id 'interface
                                                                 (go:type:id:interface
                                                                  (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f))
                                                                        (go:type:id:interface:field 'x (go:type:id 'func (go:type:id:func null null))))))))))
                            (check-equal?
-                            (go/eval (type (interface io.Reader (x (func (() ()))))))
+                            (go/expand (type (interface io.Reader (x (func (() ()))))))
                             (list (go:expr (go:type (go:type:id 'interface
                                                                 (go:type:id:interface
                                                                  (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f))
                                                                        (go:type:id:interface:field 'x (go:type:id 'func (go:type:id:func null null))))))))))
                            (check-equal?
-                            (go/eval
+                            (go/expand
                              (type
                               (interface io.Reader
                                 (x (func (((k int) (v (map int string))) (error))))
@@ -811,48 +855,48 @@
                                                                                                                     #f))))))))))))
 
                            (check-equal?
-                            (go/eval (type (slice   string)))
+                            (go/expand (type (slice   string)))
                             (list (go:expr (go:type (go:type:id 'slice (go:type:id:slice    (go:type:id 'string #f)))))))
                            (check-equal?
-                            (go/eval (type (array   string 5)))
+                            (go/expand (type (array   string 5)))
                             (list (go:expr (go:type (go:type:id 'array (go:type:id:array    (go:type:id 'string #f) 5))))))
                            (check-equal?
-                            (go/eval (type (ptr     string)))
+                            (go/expand (type (ptr     string)))
                             (list (go:expr (go:type (go:type:id 'ptr   (go:type:id:ptr      (go:type:id 'string #f)))))))
                            (check-equal?
-                            (go/eval (type (chan -> string)))
+                            (go/expand (type (chan -> string)))
                             (list (go:expr (go:type (go:type:id 'chan  (go:type:id:chan '-> (go:type:id 'string #f)))))))
                            (check-equal?
-                            (go/eval (type (chan <- string)))
+                            (go/expand (type (chan <- string)))
                             (list (go:expr (go:type (go:type:id 'chan  (go:type:id:chan '<- (go:type:id 'string #f)))))))
                            (check-equal?
-                            (go/eval (type (chan    string)))
+                            (go/expand (type (chan    string)))
                             (list (go:expr (go:type (go:type:id 'chan  (go:type:id:chan #f  (go:type:id 'string #f)))))))
                            (check-equal?
-                            (go/eval (type (chan    (struct))))
+                            (go/expand (type (chan    (struct))))
                             (list (go:expr (go:type (go:type:id 'chan  (go:type:id:chan #f  (go:type:id 'struct (go:type:id:struct null)))))))))
 
                (test-suite "instance"
                            (check-equal?
-                            (go/eval (instance X))
+                            (go/expand (instance X))
                             (list (go:expr (go:instance (go:type:id 'X #f) null))))
                            (check-equal?
-                            (go/eval (instance X nil))
+                            (go/expand (instance X nil))
                             (list (go:expr (go:instance (go:type:id 'X #f) (list (go:expr 'nil))))))
                            (check-equal?
-                            (go/eval (instance (slice int) 1 2 3 4))
+                            (go/expand (instance (slice int) 1 2 3 4))
                             (list (go:expr (go:instance (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
                                                         (list (go:expr 1) (go:expr 2)
                                                               (go:expr 3) (go:expr 4))))))
                            (check-equal?
-                            (go/eval (instance (array int 4) 1 2 3 4))
+                            (go/expand (instance (array int 4) 1 2 3 4))
                             (list (go:expr (go:instance (go:type:id 'array (go:type:id:array (go:type:id 'int #f) 4))
                                                         (list (go:expr 1) (go:expr 2)
                                                               (go:expr 3) (go:expr 4))))))
                            (check-equal?
-                            (go/eval (instance (map string int)
-                                               ("1" 1) ("2" 2)
-                                               ("3" 3) ("4" 4)))
+                            (go/expand (instance (map string int)
+                                                 ("1" 1) ("2" 2)
+                                                 ("3" 3) ("4" 4)))
                             (list (go:expr (go:instance (go:type:id 'map
                                                                     (go:type:id:map (go:type:id 'string #f)
                                                                                     (go:type:id 'int    #f)))
@@ -860,11 +904,11 @@
                                                               (cons "3" (go:expr 3)) (cons "4" (go:expr 4)))))))
 
                            (check-equal?
-                            (go/eval (instance (map string (struct (x int)))
-                                               ("1" (instance (struct (x int)) 1))
-                                               ("2" (instance (struct (x int)) 2))
-                                               ("3" (instance (struct (x int)) 3))
-                                               ("4" (instance (struct (x int)) 4))))
+                            (go/expand (instance (map string (struct (x int)))
+                                                 ("1" (instance (struct (x int)) 1))
+                                                 ("2" (instance (struct (x int)) 2))
+                                                 ("3" (instance (struct (x int)) 3))
+                                                 ("4" (instance (struct (x int)) 4))))
                             (list (go:expr
                                    (go:instance
                                     (go:type:id 'map
@@ -885,7 +929,7 @@
                                                               (list (go:expr 4))))))))))
 
                            (check-equal?
-                            (go/eval (instance (struct (x (interface)))))
+                            (go/expand (instance (struct (x (interface)))))
                             (list (go:expr (go:instance (go:type:id 'struct
                                                                     (go:type:id:struct (list (go:type:id:struct:field
                                                                                               'x
@@ -895,68 +939,68 @@
 
                (test-suite "def"
                            (check-equal?
-                            (go/eval (def x 1))
+                            (go/expand (def x 1))
                             (list (go:expr (go:def 'x (go:expr 1)))))
                            (check-equal?
-                            (go/eval (def x (func ())))
+                            (go/expand (def x (func ())))
                             (list (go:expr (go:def 'x (go:expr (go:func #f null null null))))))
                            (check-equal?
-                            (go/eval (def x (instance (slice int))))
+                            (go/expand (def x (instance (slice int))))
                             (list (go:expr (go:def 'x (go:expr (go:instance
                                                                 (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
                                                                 null)))))))
 
                (test-suite "set"
                            (check-equal?
-                            (go/eval (set x 1))
+                            (go/expand (set x 1))
                             (list (go:expr (go:set 'x (go:expr 1)))))
                            (check-equal?
-                            (go/eval (set x (func ())))
+                            (go/expand (set x (func ())))
                             (list (go:expr (go:set 'x (go:expr (go:func #f null null null))))))
                            (check-equal?
-                            (go/eval (set x (instance (slice int))))
+                            (go/expand (set x (instance (slice int))))
                             (list (go:expr (go:set 'x (go:expr (go:instance
                                                                 (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
                                                                 null)))))))
 
                (test-suite "package"
                            (check-equal?
-                            (go/eval (package foo))
+                            (go/expand (package foo))
                             (list (go:expr (go:package 'foo))))
                            (check-equal?
-                            (go/eval (package #:foo))
+                            (go/expand (package #:foo))
                             (list (go:expr (go:package 'foo))))
                            (check-equal?
-                            (go/eval (package "foo"))
+                            (go/expand (package "foo"))
                             (list (go:expr (go:package 'foo)))))
 
                (test-suite "import"
                            (check-equal?
-                            (go/eval (import foo bar))
+                            (go/expand (import foo bar))
                             (list (go:expr (go:imports
                                             (list
                                              (go:import 'foo #f)
                                              (go:import 'bar #f))))))
                            (check-equal?
-                            (go/eval (import #:foo bar))
+                            (go/expand (import #:foo bar))
                             (list (go:expr (go:imports
                                             (list
                                              (go:import 'foo #f)
                                              (go:import 'bar #f))))))
                            (check-equal?
-                            (go/eval (import (x #:foo) bar))
+                            (go/expand (import (x #:foo) bar))
                             (list (go:expr (go:imports
                                             (list
                                              (go:import 'foo 'x)
                                              (go:import 'bar #f))))))
                            (check-equal?
-                            (go/eval (import (#:x #:foo) bar))
+                            (go/expand (import (#:x #:foo) bar))
                             (list (go:expr (go:imports
                                             (list
                                              (go:import 'foo 'x)
                                              (go:import 'bar #f))))))
                            (check-equal?
-                            (go/eval (import (#:x "foo") "bar"))
+                            (go/expand (import (#:x "foo") "bar"))
                             (list (go:expr (go:imports
                                             (list
                                              (go:import 'foo 'x)
@@ -964,32 +1008,32 @@
 
                (test-suite "func"
                            (check-equal?
-                            (go/eval (func ()))
+                            (go/expand (func ()))
                             (list (go:expr (go:func #f null null null))))
                            (check-equal?
-                            (go/eval (func (() ())))
+                            (go/expand (func (() ())))
                             (list (go:expr (go:func #f null null null))))
                            (check-equal?
-                            (go/eval (func (hello () ())))
+                            (go/expand (func (hello () ())))
                             (list (go:expr (go:func 'hello null null null))))
                            (check-equal?
-                            (go/eval (func ((t) ())))
+                            (go/expand (func ((t) ())))
                             (list (go:expr (go:func #f (list (go:type:id 't #f)) null null))))
                            (check-equal?
-                            (go/eval (func (((t)) ())))
+                            (go/expand (func (((t)) ())))
                             (list (go:expr (go:func #f (list (go:type:id 't #f)) null null))))
                            (check-equal?
-                            (go/eval (func (((name type))
-                                            ((return-name return-type)))))
+                            (go/expand (func (((name type))
+                                              ((return-name return-type)))))
                             (list (go:expr
                                    (go:func #f
                                             `((name        . ,(go:type:id 'type        #f)))
                                             `((return-name . ,(go:type:id 'return-type #f)))
                                             null))))
                            (check-equal?
-                            (go/eval (func (((name type) (name1 type1))
-                                            ((return-name  return-type)
-                                             (return-name1 return-type1)))))
+                            (go/expand (func (((name type) (name1 type1))
+                                              ((return-name  return-type)
+                                               (return-name1 return-type1)))))
                             (list (go:expr
                                    (go:func #f
                                             `((name         . ,(go:type:id 'type         #f))
@@ -998,10 +1042,10 @@
                                               (return-name1 . ,(go:type:id 'return-type1 #f)))
                                             null))))
                            (check-equal?
-                            (go/eval (func (((name type))
-                                            ((return-name return-type)))
-                                           (func (((name1 type1))
-                                                  ((return-name1 return-type1))))))
+                            (go/expand (func (((name type))
+                                              ((return-name return-type)))
+                                             (func (((name1 type1))
+                                                    ((return-name1 return-type1))))))
                             (list (go:expr
                                    (go:func #f
                                             `((name        . ,(go:type:id 'type        #f)))
@@ -1012,12 +1056,12 @@
                                                             `((return-name1 . ,(go:type:id 'return-type1 #f)))
                                                             null)))))))
                            (check-equal?
-                            (go/eval (func (((name type))
-                                            ((return-name return-type)))
-                                           (func (((name1 type1))
-                                                  ((return-name1 return-type1))))
-                                           (func (((name1 type1))
-                                                  ((return-name1 return-type1))))))
+                            (go/expand (func (((name type))
+                                              ((return-name return-type)))
+                                             (func (((name1 type1))
+                                                    ((return-name1 return-type1))))
+                                             (func (((name1 type1))
+                                                    ((return-name1 return-type1))))))
                             (list (go:expr
                                    (go:func #f
                                             `((name        . ,(go:type:id 'type        #f)))
@@ -1035,39 +1079,39 @@
 
                (test-suite "var"
                            (check-equal?
-                            (go/eval (var (x y)))
+                            (go/expand (var (x y)))
                             (list (go:expr (go:var (list (go:var:binding 'x (go:type:id 'y #f) #f))))))
                            (check-equal?
-                            (go/eval (var (x y 1)))
+                            (go/expand (var (x y 1)))
                             (list (go:expr (go:var (list (go:var:binding 'x (go:type:id 'y #f) (go:expr 1)))))))
                            (check-equal?
-                            (go/eval (var (x y 1) (xx yy zz)))
+                            (go/expand (var (x y 1) (xx yy zz)))
                             (list (go:expr (go:var (list (go:var:binding 'x  (go:type:id 'y #f)  (go:expr 1))
                                                          (go:var:binding 'xx (go:type:id 'yy #f) (go:expr 'zz))))))))
 
                (test-suite "go"
                            (check-equal?
-                            (go/eval (go (func ())))
+                            (go/expand (go (func ())))
                             (list (go:expr
                                    (go:func:call 'go (list (go:expr (go:func #f null null null))))))))
 
                (test-suite "if"
                            (check-equal?
-                            (go/eval (if (== 1 1) (fmt.Println "ok")))
+                            (go/expand (if (== 1 1) (fmt.Println "ok")))
                             (list (go:expr
                                    (go:if
                                     (go:expr (go:operator  '==          (list (go:expr 1) (go:expr 1))))
                                     (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
                                     #f))))
                            (check-equal?
-                            (go/eval (if (== 1 1) (fmt.Println "ok") (fmt.Println "not ok")))
+                            (go/expand (if (== 1 1) (fmt.Println "ok") (fmt.Println "not ok")))
                             (list (go:expr
                                    (go:if
                                     (go:expr (go:operator  '==          (list (go:expr 1) (go:expr 1))))
                                     (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
                                     (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok"))))))))
                            (check-equal?
-                            (go/eval (if (== 1 1) (fmt.Println "ok") (fmt.Println "not ok")))
+                            (go/expand (if (== 1 1) (fmt.Println "ok") (fmt.Println "not ok")))
                             (list (go:expr
                                    (go:if
                                     (go:expr (go:operator  '==          (list (go:expr 1) (go:expr 1))))
@@ -1075,13 +1119,13 @@
                                     (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok")))))))))
                (test-suite "for"
                            (check-equal?
-                            (go/eval (for () (fmt.Println k v)))
+                            (go/expand (for () (fmt.Println k v)))
                             (list (go:expr (go:for
                                             null
                                             null
                                             (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))))
                            (check-equal?
-                            (go/eval (for ((k v) (instance (slice int) 1 2 3)) (fmt.Println k v)))
+                            (go/expand (for ((k v) (instance (slice int) 1 2 3)) (fmt.Println k v)))
                             (list (go:expr (go:for
                                             (list 'k 'v)
                                             (go:expr
@@ -1090,7 +1134,7 @@
                                               (list (go:expr 1) (go:expr 2) (go:expr 3))))
                                             (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))))
                            (check-equal?
-                            (go/eval (for (k (instance (slice int) 1 2 3)) (fmt.Println k)))
+                            (go/expand (for (k (instance (slice int) 1 2 3)) (fmt.Println k)))
                             (list (go:expr (go:for
                                             (list 'k)
                                             (go:expr
@@ -1100,10 +1144,10 @@
                                             (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k))))))))))
                (test-suite "switch"
                            (check-equal?
-                            (go/eval (switch 1
-                                             (1 (fmt.Println "one"))
-                                             (2 (fmt.Println "two"))
-                                             (default (fmt.Println "default"))))
+                            (go/expand (switch 1
+                                               (1 (fmt.Println "one"))
+                                               (2 (fmt.Println "two"))
+                                               (default (fmt.Println "default"))))
                             (list (go:expr
                                    (go:switch (go:expr 1)
                                               (list (go:case
@@ -1116,10 +1160,10 @@
                                                      'default
                                                      (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default")))))))))))
                            (check-equal?
-                            (go/eval (switch (+ 1 1)
-                                             (1 (fmt.Println "one"))
-                                             (2 (fmt.Println "two"))
-                                             (default (fmt.Println "default"))))
+                            (go/expand (switch (+ 1 1)
+                                               (1 (fmt.Println "one"))
+                                               (2 (fmt.Println "two"))
+                                               (default (fmt.Println "default"))))
                             (list (go:expr
                                    (go:switch (go:expr (go:operator '+ (list (go:expr 1) (go:expr 1))))
                                               (list (go:case
@@ -1133,136 +1177,202 @@
                                                      (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default"))))))))))))
                (test-suite "select"
                            (check-equal?
-                            (go/eval (select
-                                      ((def x (<- ch)) (println x))
-                                      (default (println "default case"))))
+                            (go/expand (select
+                                        ((def x (<- ch)) (println x))
+                                        (default (println "default case"))))
                             (list (go:expr
                                    (go:select
                                     (list
                                      (go:case
-                                      (go:expr (go:def 'x (go:expr (go:func:call '<- (list (go:expr 'ch)))))) ;; FIXME: <- is not func call, it is a receive operator
+                                      (go:expr (go:def 'x (go:expr (go:receive (go:expr 'ch)))))
                                       (list (go:expr (go:func:call 'println (list (go:expr 'x))))))
                                      (go:case
                                       'default
                                       (list (go:expr (go:func:call 'println (list (go:expr "default case"))))))))))))
                (test-suite "cast"
-                           (check-equal? (go/eval (cast v bool))
+                           (check-equal? (go/expand (cast v bool))
                                          (list (go:expr (go:case (go:expr 'v) (go:type:id 'bool #f)))))
-                           (check-equal? (go/eval (cast v (assert bool)))
+                           (check-equal? (go/expand (cast v (assert bool)))
                                          (list (go:expr (go:case (go:expr 'v) (go:cast:assert (go:type:id 'bool #f)))))))
                (test-suite "return"
-                           (check-equal? (go/eval (return))
+                           (check-equal? (go/expand (return))
                                          (list (go:expr (go:return null))))
-                           (check-equal? (go/eval (return (+ 1 1)))
+                           (check-equal? (go/expand (return (+ 1 1)))
                                          (list (go:expr (go:return
                                                          (list (go:expr
                                                                 (go:operator '+ (list
                                                                                  (go:expr 1)
                                                                                  (go:expr 1))))))))))
                (test-suite "break"
-                           (check-equal? (go/eval (break))
+                           (check-equal? (go/expand (break))
                                          (list (go:expr (go:break #f))))
-                           (check-equal? (go/eval (break xxx))
+                           (check-equal? (go/expand (break xxx))
                                          (list (go:expr (go:break 'xxx)))))
                (test-suite "continue"
-                           (check-equal? (go/eval (continue))
+                           (check-equal? (go/expand (continue))
                                          (list (go:expr (go:continue #f))))
-                           (check-equal? (go/eval (continue xxx))
+                           (check-equal? (go/expand (continue xxx))
                                          (list (go:expr (go:continue 'xxx)))))
                (test-suite "label"
                            (check-equal?
-                            (go/eval (label xxx (for () (break xxx))))
+                            (go/expand (label xxx (for () (break xxx))))
                             (list (go:expr (go:label 'xxx
                                                      (go:expr (go:for null null
                                                                       (list (go:expr (go:break 'xxx))))))))))
                (test-suite "goto"
                            (check-equal?
-                            (go/eval (goto xxx))
+                            (go/expand (goto xxx))
                             (list (go:expr (go:goto 'xxx)))))
                (test-suite "iota"
                            (check-equal?
-                            (go/eval (iota))
+                            (go/expand (iota))
                             (list (go:expr (go:iota)))))
                (test-suite "defer"
                            (check-equal?
-                            (go/eval (defer (println "hello")))
+                            (go/expand (defer (println "hello")))
                             (list (go:expr (go:defer (go:expr (go:func:call 'println
+                                                                            (list (go:expr "hello")))))))))
+               (test-suite "slice"
+                           (check-equal?
+                            (go/expand (slice arr 5 10))
+                            (list (go:expr (go:slice (go:expr 'arr)
+                                                     (go:expr 5)
+                                                     (go:expr 10)))))
+                           (check-equal?
+                            (go/expand (slice arr 5))
+                            (list (go:expr (go:slice (go:expr 'arr)
+                                                     (go:expr 5)
+                                                     #f))))
+                           (check-equal?
+                            (go/expand (slice arr 0 10))
+                            (list (go:expr (go:slice (go:expr 'arr)
+                                                     (go:expr 0)
+                                                     (go:expr 10)))))
+                           (check-equal?
+                            (go/expand (slice arr (+ 1 1) 10))
+                            (list (go:expr (go:slice (go:expr 'arr)
+                                                     (go:expr (go:operator '+ (list (go:expr 1) (go:expr 1))))
+                                                     (go:expr 10))))))
+
+               (test-suite "index"
+                           (check-equal?
+                            (go/expand (index arr 0))
+                            (list (go:expr (go:index (go:expr 'arr) (go:expr 0)))))
+                           (check-equal?
+                            (go/expand (index arr (* 2 x)))
+                            (list (go:expr (go:index (go:expr 'arr)
+                                                     (go:expr (go:operator '*
+                                                                           (list (go:expr 2) (go:expr 'x)))))))))
+               (test-suite "send"
+                           (check-equal? (go/expand (send ch "test"))
+                                         (list (go:expr (go:send (go:expr 'ch)
+                                                                 (go:expr "test")))))
+                           (check-equal? (go/expand (-> ch "test"))
+                                         (list (go:expr (go:send (go:expr 'ch)
+                                                                 (go:expr "test"))))))
+               (test-suite "receive"
+                           (check-equal? (go/expand (receive ch))
+                                         (list (go:expr (go:receive (go:expr 'ch)))))
+                           (check-equal? (go/expand (<- ch))
+                                         (list (go:expr (go:receive (go:expr 'ch))))))
+               (test-suite "inc"
+                           (check-equal? (go/expand (inc n))
+                                         (list (go:expr (go:inc 'n))))
+                           (check-equal? (go/expand (++ n))
+                                         (list (go:expr (go:inc 'n)))))
+               (test-suite "dec"
+                           (check-equal? (go/expand (dec n))
+                                         (list (go:expr (go:dec 'n))))
+                           (check-equal? (go/expand (-- n))
+                                         (list (go:expr (go:dec 'n)))))
+               (test-suite "ref"
+                           (check-equal? (go/expand (ref v))
+                                         (list (go:expr (go:ref (go:expr 'v))))))
+               (test-suite "deref"
+                           (check-equal? (go/expand (deref v))
+                                         (list (go:expr (go:deref (go:expr 'v))))))
+
                ;; other expression cases
 
                (test-suite "dummy"
-                           (check-equal? (go/eval (package main)
-                                                  (import os fmt)
-                                                  (func (main () ()) (println os.Args)))
+                           (check-equal? (go/expand (package main)
+                                                    (import os fmt)
+                                                    (func (main () ()) (println os.Args)))
                                          (list (go:expr (go:package 'main))
                                                (go:expr (go:imports (list (go:import 'os #f) (go:import 'fmt #f))))
                                                (go:expr (go:func 'main null null (list (go:expr (go:func:call 'println (list (go:expr 'os.Args))))))))))
 
                (test-suite "primitive"
                            (test-case "nil"
-                             (check-equal? (go/eval nil)                (list (go:expr 'nil))))
+                             (check-equal? (go/expand nil)                (list (go:expr 'nil))))
                            (test-case "bool"
-                             (check-equal? (go/eval #t)                 (list (go:expr #t)))
-                             (check-equal? (go/eval #f)                 (list (go:expr #f))))
+                             (check-equal? (go/expand #t)                 (list (go:expr #t)))
+                             (check-equal? (go/expand #f)                 (list (go:expr #f))))
                            (test-case "number"
-                             (check-equal? (go/eval 666)                (list (go:expr 666)))
-                             (check-equal? (go/eval 666.6)              (list (go:expr 666.6)))
-                             (check-equal? (go/eval -666)               (list (go:expr -666)))
-                             (check-equal? (go/eval -666.6)             (list (go:expr -666.6))))
+                             (check-equal? (go/expand 666)                (list (go:expr 666)))
+                             (check-equal? (go/expand 666.6)              (list (go:expr 666.6)))
+                             (check-equal? (go/expand -666)               (list (go:expr -666)))
+                             (check-equal? (go/expand -666.6)             (list (go:expr -666.6))))
                            (test-case "string"
-                             (check-equal? (go/eval "hello")            (list (go:expr "hello"))))
+                             (check-equal? (go/expand "hello")            (list (go:expr "hello"))))
                            (test-case "identifier"
-                             (check-equal? (go/eval runtime.GOMAXPROCS) (list (go:expr 'runtime.GOMAXPROCS)))))
+                             (check-equal? (go/expand runtime.GOMAXPROCS) (list (go:expr 'runtime.GOMAXPROCS)))))
 
                (test-suite "complex"
                            (test-case "cli"
-                             (check-equal? (go/eval (package main)
-                                                    (import os fmt
-                                                            (cli github.com/urfave/cli/v2))
-                                                    (var (Flags (slice cli.Flag)
-                                                                (instance (slice cli.Flag)
-                                                                          (instance cli.BoolFlag
-                                                                                    (Name "test")
-                                                                                    (Usage "test flag")))))
-                                                    (func (RootAction ((ctx (ptr cli.Context))) (error))
-                                                          (fmt.Println "hello from root, test is" (ctx.Bool "test")))
-                                                    (func (main () ())
-                                                          (def app (instance (ptr cli.App)))
-                                                          (set app.Flags    Flags)
-                                                          (set app.Action   RootAction)
-                                                          (app.Run os.Args)))
-                                           (list (go:expr (go:package 'main))
-                                                 (go:expr (go:imports (list (go:import 'os #f)
-                                                                            (go:import 'fmt #f)
-                                                                            (go:import 'github.com/urfave/cli/v2 'cli))))
-                                                 (go:expr (go:var (list (go:var:binding
-                                                                         'Flags
-                                                                         (go:type:id 'slice (go:type:id:slice (go:type:id 'cli.Flag #f)))
-                                                                         (go:expr (go:instance
-                                                                                   (go:type:id 'slice (go:type:id:slice (go:type:id 'cli.Flag #f)))
-                                                                                   (list (go:expr (go:instance
-                                                                                                   (go:type:id 'cli.BoolFlag #f)
-                                                                                                   (list (cons 'Name  (go:expr "test"))
-                                                                                                         (cons 'Usage (go:expr "test flag"))))))))))))
-                                                 (go:expr (go:func 'RootAction
-                                                                   (list (cons 'ctx (go:type:id 'ptr (go:type:id:ptr (go:type:id 'cli.Context #f)))))
-                                                                   (list (go:type:id 'error #f))
-                                                                   (list (go:expr
-                                                                          (go:func:call 'fmt.Println
-                                                                                        (list (go:expr "hello from root, test is")
-                                                                                              (go:expr (go:func:call 'ctx.Bool
-                                                                                                                     (list (go:expr "test"))))))))))
-                                                 (go:expr (go:func 'main
-                                                                   null null
-                                                                   (list (go:expr (go:def
-                                                                                   'app
-                                                                                   (go:expr (go:instance
-                                                                                             (go:type:id 'ptr
-                                                                                                         (go:type:id:ptr (go:type:id 'cli.App #f)))
-                                                                                             null))))
-                                                                         (go:expr (go:set 'app.Flags  (go:expr 'Flags)))
-                                                                         (go:expr (go:set 'app.Action (go:expr 'RootAction)))
-                                                                         (go:expr (go:func:call 'app.Run
-                                                                                                (list (go:expr 'os.Args))))))))))))))
+                             (check-equal?
+                              (go/expand (package main)
+                                         (import
+                                          os fmt
+                                          (cli github.com/urfave/cli/v2))
+
+                                         (var (Flags (slice cli.Flag)
+                                                     (instance (slice cli.Flag)
+                                                               (instance cli.BoolFlag
+                                                                         (Name "test")
+                                                                         (Usage "test flag")))))
+
+                                         (func (RootAction ((ctx (ptr cli.Context))) (error))
+                                               (fmt.Println "hello from root, test is" (ctx.Bool "test")))
+
+                                         (func (main)
+                                               (def app (instance (ptr cli.App)))
+                                               (set app.Flags    Flags)
+                                               (set app.Action   RootAction)
+                                               (app.Run os.Args)))
+                              (list (go:expr (go:package 'main))
+                                    (go:expr (go:imports (list (go:import 'os #f)
+                                                               (go:import 'fmt #f)
+                                                               (go:import 'github.com/urfave/cli/v2 'cli))))
+                                    (go:expr (go:var (list (go:var:binding
+                                                            'Flags
+                                                            (go:type:id 'slice (go:type:id:slice (go:type:id 'cli.Flag #f)))
+                                                            (go:expr (go:instance
+                                                                      (go:type:id 'slice (go:type:id:slice (go:type:id 'cli.Flag #f)))
+                                                                      (list (go:expr (go:instance
+                                                                                      (go:type:id 'cli.BoolFlag #f)
+                                                                                      (list (cons 'Name  (go:expr "test"))
+                                                                                            (cons 'Usage (go:expr "test flag"))))))))))))
+                                    (go:expr (go:func 'RootAction
+                                                      (list (cons 'ctx (go:type:id 'ptr (go:type:id:ptr (go:type:id 'cli.Context #f)))))
+                                                      (list (go:type:id 'error #f))
+                                                      (list (go:expr
+                                                             (go:func:call 'fmt.Println
+                                                                           (list (go:expr "hello from root, test is")
+                                                                                 (go:expr (go:func:call 'ctx.Bool
+                                                                                                        (list (go:expr "test"))))))))))
+                                    (go:expr (go:func 'main
+                                                      null null
+                                                      (list (go:expr (go:def
+                                                                      'app
+                                                                      (go:expr (go:instance
+                                                                                (go:type:id 'ptr
+                                                                                            (go:type:id:ptr (go:type:id 'cli.App #f)))
+                                                                                null))))
+                                                            (go:expr (go:set 'app.Flags  (go:expr 'Flags)))
+                                                            (go:expr (go:set 'app.Action (go:expr 'RootAction)))
+                                                            (go:expr (go:func:call 'app.Run
+                                                                                   (list (go:expr 'os.Args))))))))))))))
     (displayln (format "test suite ~s" (rackunit-test-suite-name suite)))
     (display "\t")
     (run-tests suite 'verbose)))

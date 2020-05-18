@@ -8,6 +8,7 @@
 (define (*->symbol v)
   (match v
     ((? symbol?  v) v)
+    ((? number?  v) v)
     ((? string?  v) (string->symbol v))
     ((? keyword? v) (*->symbol (keyword->string v)))
     ((? syntax?  v) (*->symbol (syntax->datum v)))))

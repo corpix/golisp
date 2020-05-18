@@ -1,0 +1,217 @@
+#+BEGIN_SRC lisp
+
+;; CRowView.CL
+
+(defun life (source)
+  (let* ((size (length (car source)))
+         (life (make-world
+                :size size
+                :current (make-array (list size size) :element-type 'bit
+						      :initial-contents source)
+                :next (make-array (list size size) :element-type 'bit
+                                                   :initial-element 0)
+                :numdots 0)))
+    (dotimes (i size)
+      (dotimes (j size)
+        (unless (zerop (bit (world-current life) i j))
+          (incf (world-numdots life))
+          (when (< i (world-xmin life)) (setf (world-xmin life) i))
+          (when (> i (world-xmax life)) (setf (world-xmax life) i))
+          (when (< j (world-ymin life)) (setf (world-ymin life) j))
+          (when (> j (world-ymax life)) (setf (world-ymax life) j)))))
+    (propagate life 0)))
+
+#+END_SRC
+
+
+
+* Introduction
+
+  So, let's talk about Lisp.
+
+  Lisp is:
+  - multiparadigm (functional, OOP, logic, ...)
+  - dynamically typed
+  - static typing also available
+  - homoiconic
+  - extendable
+  - native FFI support
+  - ...
+
+
+* Flavors of Lisp
+
+  John McCarthy developed Lisp in 1958 while he was at the MIT.
+  Scheme was created during the 1970s at the MIT AI Lab and released by
+  its developers, Guy Lewis Steele and Gerald Jay Sussman, via a series of
+  memos now known as the «Lambda Papers».
+
+  - Scheme (origins ~70s)
+    - Racket
+    - Guile
+    - ... https://wiki.c2.com/?SchemeImplementations
+  - Common Lisp (origins ~80s, ANSI standard from 1994)
+    - SBCL (Steel Bank Common Lisp)
+    - CCL (Clozure Common Lisp)
+    - ABCL (Armed Bear Common Lisp)
+    - ... https://lisp-lang.org/wiki/article/implementations
+  - Emacs Lisp (origins ~85s)
+  - Clojure (origins ~2007)
+
+
+* Language overview
+
+  <- Look into the REPL :)
+
+  - primitives
+    - booleans
+    - numbers (rational numbers are builtin)
+    - strings
+  - lists
+    - cons-boxes
+    - vectors
+  - quotation
+    - read & eval
+  - symbols
+  - variables
+    - lexical
+    - dynamic
+  - functions
+  - macro
+    - argument evaluation
+    - lisp & scheme macro difference
+  - specials
+  - flow control
+    - if
+    - when
+    - cond
+    - match
+  - continuations (BONUS track)
+
+
+* Key takeaways
+
+
+** S-expressions
+
+   Symbolic expressions.
+
+   #+BEGIN_SRC scheme
+
+   (+ 1 (/ 4 2)) ;; expressions
+
+   (div ((class red) ;; html
+         (aria-label "red block"))
+        ((h1 () "Red Block Heading")))
+
+   #+END_SRC
+
+** Symbols
+
+   Symbols are like an immutable strings.
+
+   #+BEGIN_SRC scheme
+
+   '5     ;; -> 5
+   '#t    ;; -> #t
+   'hello ;; -> 'hello
+
+   (eq? 'hello 'hello)      ;; -> #t
+   (eq? "hello" "hello")    ;; -> #f
+   (equal? "hello" "hello") ;; -> #t
+
+   #+END_SRC
+
+
+** Quotation
+
+   #+BEGIN_SRC scheme
+
+   (quote hello)  ;; -> 'hello
+   'hello         ;; -> 'hello
+
+   (quote (1 2 3))   ;; -> '(1 2 3)
+   (quote (+ 1 2 3)) ;; -> '(+ 1 2 3)
+
+   (quasiquote (+ 2 (unquote (+ 1 1))))             ;; -> '(+ 2 2)
+   (quasiquote (+ 2 (unquote-splicing (list 1 1)))) ;; -> '(+ 2 1 1)
+
+   #+END_SRC
+
+
+** Eval
+
+   #+BEGIN_SRC scheme
+
+   (eval (quote (+ 1 2 3))) ;; -> 6
+
+   #+END_SRC
+
+
+** Function vs Macro
+
+  #+BEGIN_SRC scheme
+
+  (define (my-if cond then else)
+    (if cond then else))
+
+  (my-if #t 1 2) ;; -> 1
+  (my-if #t (displayln 'then)
+            (displayln 'else))
+  ;; ->
+  ;;;;  then
+  ;;;;  else
+
+  #+END_SRC
+
+  #+BEGIN_SRC scheme
+
+  (define-syntax (my-if stx)
+    (syntax-case stx ()
+      ((_ cond then else) (syntax (if cond then else)))))
+
+  (my-if #t 1 2) ;; -> 1
+  (my-if #t (displayln 'then)
+            (displayln 'else))
+  ;; ->
+  ;;;;  then
+
+  #+END_SRC
+
+
+* Golisp
+
+  Small demo of the DSL I am working on
+  which generates Go code from lispy expressions.
+
+  - s-exps -> ast expansion
+  - ast folding
+  - further plans
+
+
+* References
+
+  Lisp in culture:
+  - SICP Anime Opening https://www.youtube.com/watch?v=a0YrCABCOEY
+  - Land of Lisp — The Music Video https://www.youtube.com/watch?v=HM1Zb3xmvMc
+  - Serial Experiments Lain https://lain.wiki/wiki/Source_code#Layer_07
+
+  Video:
+  - (level: I'm alergic to pain) William Byrd on "The Most Beautiful Program Ever Written"
+    https://www.youtube.com/watch?v=OyfBQmvr2Hc
+  - (level: I thrive off pain) Stefan Karpinski on "Julia: to Lisp or not to Lisp?"
+    https://www.youtube.com/watch?v=dK3zRXhrFZY
+  - (level: Nightmare) Nada Amin on "Programming Should Eat Itself"
+    https://www.youtube.com/watch?v=SrKj4hYic5A
+
+  Reading:
+  - Lambda calculus https://en.wikipedia.org/wiki/Lambda_calculus
+  - Lisp https://en.wikipedia.org/wiki/Lisp_(programming_language)
+  - Scheme https://en.wikipedia.org/wiki/Scheme_(programming_language)
+  - Homoiconicity https://en.wikipedia.org/wiki/Homoiconicity
+  - Land Of Lisp book by Conrad Barski http://landoflisp.com/
+  - Racket docs https://docs.racket-lang.org/
+  - Why We Love Lisp https://wiki.c2.com/?WhyWeLoveLisp
+  - Why We Hate Lisp https://wiki.c2.com/?WhyWeHateLisp
+  - The rise and fall of Lisp at the Jet Propulsion Lab http://flownet.com/gat/jpl-lisp.html
+  - Continuation passing style https://wiki.c2.com/?ContinuationPassingStyle

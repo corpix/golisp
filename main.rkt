@@ -4,6 +4,7 @@
          racket/match
          racket/list
          "syntax.rkt"
+         "emit.rkt"
          (for-syntax racket/base
                      syntax/parse
                      "syntax.rkt"))
