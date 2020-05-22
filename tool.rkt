@@ -17,7 +17,8 @@
   (match v
     ((? symbol?  v) (symbol->string v))
     ((? string?  v)  v)
-    ((? false?   v) "")))
+    ((? number?  v) (number->string v))
+    ((? false?   v)  "")))
 
 (define ((partial f . xs) . xxs)
   (apply f (append xs xxs)))

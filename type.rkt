@@ -16,6 +16,7 @@
 (struct go:const       (bindings)        #:prefab)
 
 (struct go:type                    (value)           #:prefab)
+(struct go:type:id                 (name type)       #:prefab)
 (struct go:type:id:map             (key value)       #:prefab)
 (struct go:type:id:struct          (fields)          #:prefab)
 (struct go:type:id:struct:field    (name type tag)   #:prefab)
@@ -26,7 +27,6 @@
 (struct go:type:id:ptr             (type)            #:prefab)
 (struct go:type:id:chan            (direction type)  #:prefab)
 (struct go:type:id:func            (input output)    #:prefab)
-(struct go:type:id                 (name parameters) #:prefab)
 
 (struct go:instance (type value) #:prefab)
 

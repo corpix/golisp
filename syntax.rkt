@@ -117,101 +117,106 @@
 
   (define-syntax-class TypeIdMap
     #:description "map type description"
-    #:attributes (ast name)
+    #:attributes (ast id)
     #:datum-literals (map)
     (pattern (map k:TypeId v:TypeId)
+             #:attr id 'map
              #:attr ast (go:type:id:map (attribute k.ast)
-                                        (attribute v.ast))
-             #:attr name 'map))
+                                        (attribute v.ast))))
 
   (define-syntax-class TypeIdStruct
     #:description "struct type description"
-    #:attributes (ast name)
+    #:attributes (ast id)
     #:datum-literals (struct)
     (pattern (struct xs:TypeIdStructField ...)
-             #:attr ast (go:type:id:struct (attribute xs.ast))
-             #:attr name 'struct))
+             #:attr id 'struct
+             #:attr ast (go:type:id:struct (attribute xs.ast))))
 
   (define-syntax-class TypeIdStructField
     #:description "struct type field"
     #:attributes (ast)
     (pattern (k:id v:TypeId (~optional tag:string #:defaults ((tag (syntax #f)))))
-             #:attr ast (go:type:id:struct:field (*->symbol (syntax k))
-                                                 (attribute v.ast)
-                                                 (syntax->datum (syntax tag))))
+             #:attr ast (go:type:id:struct:field
+                         (*->symbol (syntax k))
+                         (attribute v.ast)
+                         (syntax->datum (syntax tag))))
     (pattern v:TypeId
              #:attr ast (go:type:id:struct:field #f (attribute v.ast) #f)))
 
   (define-syntax-class TypeIdInterface
     #:description "interface type description"
-    #:attributes (ast name)
+    #:attributes (ast id)
     #:datum-literals (interface)
     (pattern (interface xs:TypeIdInterfaceField ...)
-             #:attr ast (go:type:id:interface (attribute xs.ast))
-             #:attr name 'interface))
+             #:attr id 'interface
+             #:attr ast (go:type:id:interface (attribute xs.ast))))
 
   (define-syntax-class TypeIdInterfaceField
     #:description "interface type field"
     #:attributes (ast)
     (pattern (k:id v:TypeId)
-             #:attr ast (go:type:id:interface:field (*->symbol (syntax k)) (attribute v.ast)))
+             #:attr ast (go:type:id:interface:field
+                         (*->symbol (syntax k))
+                         (attribute v.ast)))
     (pattern v:TypeId
-             #:attr ast (go:type:id:interface:field #f (attribute v.ast))))
+             #:attr ast (go:type:id:interface:field
+                         #f
+                         (attribute v.ast))))
 
   (define-syntax-class TypeIdSlice
     #:description "slice type description"
-    #:attributes (ast name)
+    #:attributes (ast id)
     #:datum-literals (slice)
     (pattern (slice t:TypeId)
-             #:attr ast (go:type:id:slice (attribute t.ast))
-             #:attr name 'slice))
+             #:attr id 'slice
+             #:attr ast (go:type:id:slice (attribute t.ast))))
 
   (define-syntax-class TypeIdArray
     #:description "array type description"
-    #:attributes (ast name)
+    #:attributes (ast id)
     #:datum-literals (array ...)
     (pattern (array t:TypeId (~or* size:integer size:...))
-             #:attr ast (go:type:id:array (attribute t.ast) (syntax->datum (syntax size)))
-             #:attr name 'array))
+             #:attr id 'array
+             #:attr ast (go:type:id:array (attribute t.ast) (syntax->datum (syntax size)))))
 
   (define-syntax-class TypeIdPtr
     #:description "pointer type description"
-    #:attributes (ast name)
+    #:attributes (ast id)
     #:datum-literals (ptr)
     (pattern (ptr t:TypeId)
-             #:attr ast (go:type:id:ptr (attribute t.ast))
-             #:attr name 'ptr))
+             #:attr id 'ptr
+             #:attr ast (go:type:id:ptr (attribute t.ast))))
 
   (define-syntax-class TypeIdChan
     #:description "chan type description"
-    #:attributes (ast name)
+    #:attributes (ast id)
     #:datum-literals (chan -> <-)
     (pattern (chan (~optional (~or* direction:-> direction:<-)
                               #:defaults ((direction (syntax #f))))
                    t:TypeId)
-             #:attr ast  (go:type:id:chan (syntax->datum (syntax direction)) (attribute t.ast))
-             #:attr name 'chan))
+             #:attr id 'chan
+             #:attr ast  (go:type:id:chan (syntax->datum (syntax direction)) (attribute t.ast))))
 
   (define-syntax-class TypeIdFunc
     #:description "func type description"
-    #:attributes (ast name)
+    #:attributes (ast id)
     #:datum-literals (func)
     (pattern (func ((~optional i:FuncIO #:defaults ((i (syntax null))))
                     (~optional o:FuncIO #:defaults ((o (syntax null))))))
+             #:attr id 'func
              #:attr ast (go:type:id:func
                          (or (attribute i.ast) null)
-                         (or (attribute o.ast) null))
-             #:attr name 'func))
+                         (or (attribute o.ast) null))))
 
   (define-syntax-class TypeId%
     #:description "custom user type description"
-    #:attributes (name ast)
+    #:attributes (id ast)
     (pattern t:id
-             #:attr ast  #f
-             #:attr name (syntax->datum (syntax t))))
+             #:attr id (syntax->datum (syntax t))
+             #:attr ast  #f))
 
   (define-syntax-class TypeId
-    #:description "type name description"
+    #:description "type id description"
     #:attributes (ast)
     (pattern (~or* t:TypeIdMap
                    t:TypeIdStruct
@@ -222,7 +227,7 @@
                    t:TypeIdChan
                    t:TypeIdFunc
                    t:TypeId%)
-             #:attr ast (go:type:id (attribute t.name) (attribute t.ast))))
+             #:attr ast (go:type:id (attribute t.id) (attribute t.ast))))
 
   (define-syntax-class Type
     #:description "type definition"
@@ -874,7 +879,30 @@
                             (list (go:expr (go:type (go:type:id 'chan  (go:type:id:chan #f  (go:type:id 'string #f)))))))
                            (check-equal?
                             (go/expand (type (chan    (struct))))
-                            (list (go:expr (go:type (go:type:id 'chan  (go:type:id:chan #f  (go:type:id 'struct (go:type:id:struct null)))))))))
+                            (list (go:expr (go:type (go:type:id 'chan  (go:type:id:chan #f  (go:type:id 'struct (go:type:id:struct null))))))))
+
+                           (check-equal?
+                            (go/expand (type (func (((k string) (v int)) (int error)))))
+                            (list (go:expr
+                                   (go:type
+                                    (go:type:id
+                                     'func
+                                     (go:type:id:func
+                                      (list (cons 'k (go:type:id 'string #f))
+                                            (cons 'v (go:type:id 'int    #f)))
+                                      (list (go:type:id 'int   #f)
+                                            (go:type:id 'error #f))))))))
+                           (check-equal?
+                            (go/expand (type (func ((string int) (int error)))))
+                            (list (go:expr
+                                   (go:type
+                                    (go:type:id
+                                     'func
+                                     (go:type:id:func
+                                      (list (go:type:id 'string #f)
+                                            (go:type:id 'int    #f))
+                                      (list (go:type:id 'int   #f)
+                                            (go:type:id 'error #f)))))))))
 
                (test-suite "instance"
                            (check-equal?

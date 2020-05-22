@@ -11,14 +11,21 @@
 
 ;;
 
-(define +empty+    "")
-(define +new-line+ "\n")
-(define +tab+      "\t")
-(define +comma+    ",")
-(define +eq+       "=")
-(define +space+    " ")
-(define +lbracket+ "(")
-(define +rbracket+ ")")
+(define +empty+     "")
+(define +new-line+  "\n")
+(define +tab+       "\t")
+(define +comma+     ",")
+(define +eq+        "=")
+(define +space+     " ")
+(define +lbracket+  "(")
+(define +rbracket+  ")")
+(define +lsbracket+ "[")
+(define +rsbracket+ "]")
+(define +lcbracket+ "{")
+(define +rcbracket+ "}")
+(define +backtick+  "`")
+(define +asterisk+  "*")
+(define +ampersand+ "&")
 
 ;;
 
@@ -69,6 +76,76 @@
                (string-append +eq+
                               (emit-expr value)))
           +empty+)))))
+
+(define (emit-type ast)
+  (match ast
+    ((? symbol? ast)
+     (*->string ast))
+    ((go:type t)
+     (emit-type t))
+    ((go:type:id name #f)
+     (*->string name))
+    ((go:type:id (or 'slice 'array 'ptr 'chan) type)
+     (emit-type type))
+    ((go:type:id name type)
+     (string-append (*->string name) (emit-type type)))
+
+    ((go:type:id:map key value)
+     (string-append +lsbracket+
+                    (emit-type key)
+                    +rsbracket+
+                    (emit-type value)))
+
+    ((or (go:type:id:struct fields)
+         (go:type:id:interface fields))
+     (string-append
+      +lcbracket+
+      +new-line+
+      (string-join
+       (for/list ((field fields))
+         (string-append +tab+ (emit-type field)))
+       +new-line+)
+      +new-line+
+      +rcbracket+))
+    ((go:type:id:struct:field name type tag)
+     (string-append
+      (if name
+          (string-append (*->string name) +space+)
+          +empty+)
+      (emit-type type)
+      (if tag
+          (string-append +space+ +backtick+ (*->string tag) +backtick+)
+          +empty+)))
+    ((go:type:id:interface:field name type)
+     (string-append
+      (if name
+          (string-append (*->string name) +space+)
+          +empty+)
+      (emit-type type)))
+
+    ((go:type:id:slice type)
+     (string-append (emit-type type) +lsbracket+ +rsbracket+))
+    ((go:type:id:array type size)
+     (string-append (emit-type type) +lsbracket+ (*->string size) +rsbracket+))
+    ((go:type:id:ptr   type)
+     (string-append +asterisk+ (emit-type type)))
+    ((go:type:id:chan  direction type)
+     (string-append (*->string direction) "chan" +space+ (emit-type type)))
+
+    ((go:type:id:func input output)
+     (let ((io (lambda (v) (if (pair? v)
+                               (string-append (emit-type (car v))
+                                              +space+
+                                              (emit-type (cdr v)))
+                               (emit-type v)))))
+       (string-append
+        +lbracket+
+        (string-join (map io input) +comma+)
+        +rbracket+
+        +lbracket+
+        (string-join (map io output) +comma+)
+        +rbracket+)))
+    ))
 
 ;; (define (emit-func ast)
 ;;   (match ast
@@ -189,7 +266,152 @@
                                                         +new-line+ +tab+ "baz" +space+ "bar"
                                                         +new-line+
                                                         +rbracket+)))
-               )))
+               (test-suite "var")
+               (test-suite "type"
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'int #f)))
+                            "int")
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'int64 #f)))
+                            "int64")
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'string #f)))
+                            "string")
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'userDefined #f)))
+                            "userDefined")
+
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id (string->symbol "map[string]int") #f)))
+                            "map[string]int")
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'map (go:type:id:map 'key 'value))))
+                            "map[key]value")
+
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id
+                                       'struct
+                                       (go:type:id:struct
+                                        (list (go:type:id:struct:field #f (go:type:id 'io.Reader #f) #f)
+                                              (go:type:id:struct:field 'x (go:type:id 'map (go:type:id:map (go:type:id 'string #f) (go:type:id 'string #f))) #f)
+                                              (go:type:id:struct:field 'y (go:type:id 'X #f) #f))))))
+                            (string-append "struct"
+                                           +lcbracket+
+                                           +new-line+ +tab+ "io.Reader"
+                                           +new-line+ +tab+ "x map[string]string"
+                                           +new-line+ +tab+ "y X"
+                                           +new-line+
+                                           +rcbracket+))
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id
+                                       'struct
+                                       (go:type:id:struct
+                                        (list (go:type:id:struct:field #f (go:type:id 'io.Reader #f) "foo:bar")
+                                              (go:type:id:struct:field 'x (go:type:id 'map (go:type:id:map (go:type:id 'string #f) (go:type:id 'string #f))) "bar:baz")
+                                              (go:type:id:struct:field 'y (go:type:id 'X #f) "baz:qux"))))))
+                            (string-append "struct"
+                                           +lcbracket+
+                                           +new-line+ +tab+ "io.Reader `foo:bar`"
+                                           +new-line+ +tab+ "x map[string]string `bar:baz`"
+                                           +new-line+ +tab+ "y X `baz:qux`"
+                                           +new-line+
+                                           +rcbracket+))
+                           (check-equal?
+                            (emit-type (go:type (go:type:id 'struct (go:type:id:struct (list)))))
+                            (string-append "struct" +lcbracket+ +new-line+ +new-line+ +rcbracket+))
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id
+                                       'interface
+                                       (go:type:id:interface
+                                        (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f)))))))
+                            (string-append "interface"
+                                           +lcbracket+
+                                           +new-line+ +tab+ "io.Reader"
+                                           +new-line+
+                                           +rcbracket+))
+
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'slice (go:type:id:slice (go:type:id 'string #f)))))
+                            "string[]")
+                           (check-equal?
+                            (emit-type (go:type (go:type:id 'slice
+                                                            (go:type:id:slice
+                                                             (go:type:id 'struct (go:type:id:struct (list)))))))
+                            (string-append "struct" +lcbracket+
+                                           +new-line+ +new-line+
+                                           +rcbracket+ +lsbracket+ +rsbracket+))
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'array (go:type:id:array (go:type:id 'string #f)
+                                                                           5))))
+                            "string[5]")
+                           (check-equal?
+                            (emit-type (go:type (go:type:id
+                                                 'array
+                                                 (go:type:id:array (go:type:id 'struct (go:type:id:struct (list)))
+                                                                   5))))
+                            (string-append "struct" +lcbracket+
+                                           +new-line+ +new-line+
+                                           +rcbracket+ +lsbracket+ "5" +rsbracket+))
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'ptr (go:type:id:ptr (go:type:id 'string #f)))))
+                            "*string")
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'chan (go:type:id:chan '-> (go:type:id 'string #f)))))
+                            "->chan string")
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'chan (go:type:id:chan '<- (go:type:id 'string #f)))))
+                            "<-chan string")
+                           (check-equal?
+                            (emit-type
+                             (go:type (go:type:id 'chan (go:type:id:chan #f (go:type:id 'string #f)))))
+                            "chan string")
+
+                           (check-equal?
+                            (emit-type
+                             (go:type
+                              (go:type:id
+                               'func
+                               (go:type:id:func
+                                (list (cons 'k (go:type:id 'string #f))
+                                      (cons 'v (go:type:id 'int    #f)))
+                                (list (go:type:id 'int   #f)
+                                      (go:type:id 'error #f))))))
+                            "func(k string,v int)(int,error)")
+                           (check-equal?
+                            (emit-type
+                             (go:type
+                              (go:type:id
+                               'func
+                               (go:type:id:func
+                                (list)
+                                (list (cons 'x   (go:type:id 'int   #f))
+                                      (cons 'err (go:type:id 'error #f)))))))
+                            "func()(x int,err error)")
+                           (check-equal?
+                            (emit-type
+                             (go:type
+                              (go:type:id
+                               'func
+                               (go:type:id:func
+                                (list (go:type:id 'string #f)
+                                      (go:type:id 'int    #f))
+                                (list (go:type:id 'int   #f)
+                                      (go:type:id 'error #f))))))
+                            "func(string,int)(int,error)")))))
     (displayln (format "test suite ~s" (rackunit-test-suite-name suite)))
     (display "\t")
     (run-tests suite 'verbose)))
