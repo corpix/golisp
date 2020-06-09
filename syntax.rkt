@@ -1075,57 +1075,57 @@
                             (list (go:expr (go:func #f (list (go:type:id 't #f)) null null))))
                            (check-equal?
                             (go/expand (func (((name type))
-                                              ((return-name return-type)))))
+                                              ((returnName returnType)))))
                             (list (go:expr
                                    (go:func #f
-                                            `((name        . ,(go:type:id 'type        #f)))
-                                            `((return-name . ,(go:type:id 'return-type #f)))
+                                            `((name        . ,(go:type:id 'type       #f)))
+                                            `((returnName  . ,(go:type:id 'returnType #f)))
                                             null))))
                            (check-equal?
                             (go/expand (func (((name type) (name1 type1))
-                                              ((return-name  return-type)
-                                               (return-name1 return-type1)))))
+                                              ((returnName  returnType)
+                                               (returnName1 returnType1)))))
                             (list (go:expr
                                    (go:func #f
-                                            `((name         . ,(go:type:id 'type         #f))
-                                              (name1        . ,(go:type:id 'type1        #f)))
-                                            `((return-name  . ,(go:type:id 'return-type  #f))
-                                              (return-name1 . ,(go:type:id 'return-type1 #f)))
+                                            `((name         . ,(go:type:id 'type        #f))
+                                              (name1        . ,(go:type:id 'type1       #f)))
+                                            `((returnName   . ,(go:type:id 'returnType  #f))
+                                              (returnName1  . ,(go:type:id 'returnType1 #f)))
                                             null))))
                            (check-equal?
                             (go/expand (func (((name type))
-                                              ((return-name return-type)))
+                                              ((returnName returnType)))
                                              (func (((name1 type1))
-                                                    ((return-name1 return-type1))))))
+                                                    ((returnName1 returnType1))))))
                             (list (go:expr
                                    (go:func #f
-                                            `((name        . ,(go:type:id 'type        #f)))
-                                            `((return-name . ,(go:type:id 'return-type #f)))
+                                            `((name       . ,(go:type:id 'type       #f)))
+                                            `((returnName . ,(go:type:id 'returnType #f)))
                                             (list (go:expr
                                                    (go:func #f
-                                                            `((name1        . ,(go:type:id 'type1        #f)))
-                                                            `((return-name1 . ,(go:type:id 'return-type1 #f)))
+                                                            `((name1        . ,(go:type:id 'type1       #f)))
+                                                            `((returnName1  . ,(go:type:id 'returnType1 #f)))
                                                             null)))))))
                            (check-equal?
                             (go/expand (func (((name type))
-                                              ((return-name return-type)))
+                                              ((returnName returnType)))
                                              (func (((name1 type1))
-                                                    ((return-name1 return-type1))))
+                                                    ((returnName1 returnType1))))
                                              (func (((name1 type1))
-                                                    ((return-name1 return-type1))))))
+                                                    ((returnName1 returnType1))))))
                             (list (go:expr
                                    (go:func #f
-                                            `((name        . ,(go:type:id 'type        #f)))
-                                            `((return-name . ,(go:type:id 'return-type #f)))
+                                            `((name        . ,(go:type:id 'type       #f)))
+                                            `((returnName  . ,(go:type:id 'returnType #f)))
                                             (list (go:expr
                                                    (go:func #f
-                                                            `((name1        . ,(go:type:id 'type1        #f)))
-                                                            `((return-name1 . ,(go:type:id 'return-type1 #f)))
+                                                            `((name1        . ,(go:type:id 'type1       #f)))
+                                                            `((returnName1  . ,(go:type:id 'returnType1 #f)))
                                                             null))
                                                   (go:expr
                                                    (go:func #f
-                                                            `((name1        . ,(go:type:id 'type1        #f)))
-                                                            `((return-name1 . ,(go:type:id 'return-type1 #f)))
+                                                            `((name1       . ,(go:type:id 'type1      #f)))
+                                                            `((returnName1 . ,(go:type:id 'returnType1 #f)))
                                                             null))))))))
 
                (test-suite "var"

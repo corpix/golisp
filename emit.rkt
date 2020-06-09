@@ -208,7 +208,10 @@
                         (string-append +new-line+ (emit-expr body) +new-line+)
                         +empty+)
                     +rcbracket+))
-    ((cons k v) (string-append (*->string k) +space+ ))))
+    ((go:type:id v _)
+     (*->string v))
+    ((cons k v)
+     (string-append (*->string k) +space+ (emit-func v)))))
 
 (define (emit-id ast)     (~a ast))
 (define (emit-string ast) (~s ast))
@@ -605,7 +608,49 @@
                             "func () () {}")
                            (check-equal?
                             (emit-func (go:func 'hello null null null))
-                            "func hello () () {}")))))
+                            "func hello () () {}")
+                           (check-equal?
+                            (emit-func (go:func #f (list (go:type:id 't #f)) null null))
+                            "func (t) () {}")
+                           (check-equal?
+                            (emit-func (go:func #f
+                                                `((name        . ,(go:type:id 'type       #f)))
+                                                `((returnName  . ,(go:type:id 'returnType #f)))
+                                                null))
+                            "func (name type) (returnName returnType) {}")
+                           (check-equal?
+                            (emit-func (go:func #f
+                                                `((name         . ,(go:type:id 'type        #f))
+                                                  (name1        . ,(go:type:id 'type1       #f)))
+                                                `((returnName   . ,(go:type:id 'returnType  #f))
+                                                  (returnName1  . ,(go:type:id 'returnType1 #f)))
+                                                null))
+                            "func (name type, name1 type1) (returnName returnType, returnName1 returnType1) {}")
+                           (check-equal?
+                            (emit-func (go:func #f
+                                                `((name       . ,(go:type:id 'type       #f)))
+                                                `((returnName . ,(go:type:id 'returnType #f)))
+                                                (list (go:expr
+                                                       (go:func #f
+                                                                `((name1        . ,(go:type:id 'type1       #f)))
+                                                                `((returnName1  . ,(go:type:id 'returnType1 #f)))
+                                                                null)))))
+                            "func (name type) (returnName returnType) {\nfunc (name1 type1) (returnName1 returnType1) {}\n}")
+                           (check-equal?
+                            (emit-func (go:func #f
+                                                `((name        . ,(go:type:id 'type       #f)))
+                                                `((returnName  . ,(go:type:id 'returnType #f)))
+                                                (list (go:expr
+                                                       (go:func #f
+                                                                `((name1        . ,(go:type:id 'type1       #f)))
+                                                                `((returnName1  . ,(go:type:id 'returnType1 #f)))
+                                                                null))
+                                                      (go:expr
+                                                       (go:func #f
+                                                                `((name1       . ,(go:type:id 'type1      #f)))
+                                                                `((returnName1 . ,(go:type:id 'returnType1 #f)))
+                                                                null)))))
+                            "func (name type) (returnName returnType) {\nfunc (name1 type1) (returnName1 returnType1) {}\nfunc (name1 type1) (returnName1 returnType1) {}\n}")))))
     (displayln (format "test suite ~s" (rackunit-test-suite-name suite)))
     (display "\t")
     (run-tests suite 'verbose)))
