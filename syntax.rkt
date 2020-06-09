@@ -940,14 +940,21 @@
                                                             (cons "3" (go:expr 3)) (cons "4" (go:expr 4)))))))
 
                            (check-equal?
+                            (go/expand (create (struct (x int)) 1))
+                            (list
+                             (go:expr
+                              (go:create (go:type:id 'struct
+                                                     (go:type:id:struct
+                                                      (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
+                                         (list (go:expr 1))))))
+                           (check-equal?
                             (go/expand (create (struct (x (interface))) (NewReader)))
                             (list
                              (go:expr
-                              (go:create
-                               (go:type:id
-                                'struct (go:type:id:struct
-                                         (list (go:type:id:struct:field 'x (go:type:id 'interface (go:type:id:interface null)) #f))))
-                               (list (go:expr (go:func:call 'NewReader null)))))))
+                              (go:create (go:type:id 'struct
+                                                     (go:type:id:struct
+                                                      (list (go:type:id:struct:field 'x (go:type:id 'interface (go:type:id:interface null)) #f))))
+                                         (list (go:expr (go:func:call 'NewReader null)))))))
                            (check-equal?
                             (go/expand (create (struct (x (interface)))))
                             (list (go:expr (go:create (go:type:id 'struct

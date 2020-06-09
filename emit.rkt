@@ -28,6 +28,7 @@
 (define +asterisk+  "*")
 (define +ampersand+ "&")
 (define +colon+     ":")
+(define +coloneq+   ":=")
 
 ;;
 
@@ -176,6 +177,20 @@
       +rcbracket+))
     ((list _ ast)
      (string-append +lbracket+ (emit-expr ast) +rbracket+))))
+
+(define (emit-def ast)
+  (match ast
+    ((go:def id expr)
+     (string-append (*->string id)
+                    +space+ +coloneq+ +space+
+                    (emit-expr expr)))))
+
+(define (emit-set ast)
+  (match ast
+    ((go:set id expr)
+     (string-append (*->string id)
+                    +space+ +eq+ +space+
+                    (emit-expr expr)))))
 
 (define (emit-id ast)     (~a ast))
 (define (emit-string ast) (~s ast))
@@ -486,11 +501,10 @@
                             "map[int]string{1: \"1\", 2: \"2\", 3: \"3\", 4: \"4\"}")
                            (check-equal?
                             (emit-create
-                             (go:create
-                              (go:type:id 'struct
-                                          (go:type:id:struct
-                                           (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
-                              (list (go:expr 1))))
+                             (go:create (go:type:id 'struct
+                                                    (go:type:id:struct
+                                                     (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
+                                        (list (go:expr 1))))
                             "struct{\n\tx int\n}{1}")
                            (check-equal?
                             (emit-create
@@ -532,6 +546,33 @@
                                                         (go:type:id 'struct (go:type:id:struct (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
                                                         (list (cons 'x (go:expr 4)))))))))
                             "map[string]struct{\n\tx int\n}{\"1\": struct{\n\tx int\n}{x: 1}, \"2\": struct{\n\tx int\n}{x: 2}, \"3\": struct{\n\tx int\n}{x: 3}, \"4\": struct{\n\tx int\n}{x: 4}}"))
+
+               (test-suite "def"
+                           (check-equal?
+                            (emit-def (go:def 'x (go:expr 1)))
+                            "x := 1")
+                           ;; FIXME: uncomment when you got func support
+                           ;; (check-equal?
+                           ;;  (emit-def (go:def 'x (go:expr (go:func #f null null null))))
+                           ;;  "")
+                           (check-equal?
+                            (emit-def (go:def 'x (go:expr (go:create
+                                                           (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
+                                                           null))))
+                            "x := []int{}"))
+
+               (test-suite "set"
+                           (check-equal?
+                            (emit-set (go:set 'x (go:expr 1)))
+                            "x = 1")
+                           ;; FIXME: uncomment when you got func support
+                           ;; (check-equal?
+                           ;;  (emit-set (go:set 'x (go:expr (go:func #f null null null)))))
+                           (check-equal?
+                            (emit-set (go:set 'x (go:expr (go:create
+                                                           (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
+                                                           null))))
+                            "x = []int{}"))
 
                ;; (test-suite "create"
                ;;   (check-equal?
