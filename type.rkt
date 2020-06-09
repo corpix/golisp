@@ -28,7 +28,7 @@
 (struct go:type:id:chan            (direction type)  #:prefab)
 (struct go:type:id:func            (input output)    #:prefab)
 
-(struct go:instance (type value) #:prefab)
+(struct go:create (type value) #:prefab)
 
 (struct go:def (id expr) #:prefab)
 (struct go:set (id expr) #:prefab)
