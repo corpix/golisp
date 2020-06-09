@@ -1161,10 +1161,28 @@
                                     (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
                                     (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok"))))))))
                            (check-equal?
-                            (go/expand (if (== 1 1) (fmt.Println "ok") (fmt.Println "not ok")))
+                            (go/expand (if (not (== 1 1)) (fmt.Println "ok") (fmt.Println "not ok")))
                             (list (go:expr
                                    (go:if
-                                    (go:expr (go:operator  '==          (list (go:expr 1) (go:expr 1))))
+                                    (go:expr (go:operator '!
+                                                          (list (go:expr
+                                                                 (go:operator '==
+                                                                              (list (go:expr 1) (go:expr 1)))))))
+                                    (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
+                                    (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok"))))))))
+                           (check-equal?
+                            (go/expand (if (not (== (+ 1 5) 1))
+                                           (fmt.Println "ok")
+                                           (fmt.Println "not ok")))
+                            (list (go:expr
+                                   (go:if
+                                    (go:expr (go:operator '!
+                                                          (list (go:expr
+                                                                 (go:operator
+                                                                  '==
+                                                                  (list (go:expr
+                                                                         (go:operator '+ (list (go:expr 1) (go:expr 5))))
+                                                                        (go:expr 1)))))))
                                     (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
                                     (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok")))))))))
                (test-suite "for"

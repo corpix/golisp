@@ -37,9 +37,11 @@
     ((go:operator id operands)
      (string-append
       +lbracket+
-      (string-join
-       (map emit-expr operands)
-       (string-append +space+ (symbol->string id) +space+))
+      (if (pair? (cdr operands))
+          (string-join
+           (map emit-expr operands)
+           (string-append +space+ (symbol->string id) +space+))
+          (string-append (symbol->string id) (emit-expr (car operands))))
       +rbracket+))))
 
 (define (emit-type ast)
@@ -219,6 +221,19 @@
   (match ast
     ((go:go func) (string-append "go" +space+ (emit-expr func)))))
 
+(define (emit-if ast)
+  (match ast
+    ((go:if condition then false)
+     (string-append "if" +space+ (emit-expr condition)
+                    +space+ +lcbracket+ +new-line+
+                    +tab+ (emit-expr then) +new-line+
+                    +rcbracket+
+                    (if false
+                        (string-append +space+ "else" +space+ +lcbracket+ +new-line+
+                                       +tab+ (emit-expr false) +new-line+
+                                       +rcbracket+)
+                        +empty+)))))
+
 (define (emit-id ast)     (~a ast))
 (define (emit-string ast) (~s ast))
 (define (emit-number ast) (~a ast))
@@ -236,6 +251,7 @@
     ((? go:func?     ast) (emit-func     ast))
     ((? go:var?      ast) (emit-var      ast))
     ((? go:go?       ast) (emit-go       ast))
+    ((? go:if?       ast) (emit-if       ast))
 
     ((go:func:call func arguments)
      (string-append (emit-func func)
@@ -673,7 +689,42 @@
                             (emit-go (go:go (go:func:call (go:func #f null null null) null)))
                             "go func () () {}()"))
 
-               )))
+               (test-suite "if"
+                           (check-equal?
+                            (emit-if (go:if
+                                      (go:expr (go:operator  '==          (list (go:expr 1) (go:expr 1))))
+                                      (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
+                                      #f))
+                            "if (1 == 1) {\n\tfmt.Println(\"ok\")\n}")
+                           (check-equal?
+                            (emit-if (go:if
+                                      (go:expr (go:operator  '==          (list (go:expr 1) (go:expr 1))))
+                                      (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
+                                      (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok"))))))
+                            "if (1 == 1) {\n\tfmt.Println(\"ok\")\n} else {\n\tfmt.Println(\"not ok\")\n}")
+                           (check-equal?
+                            (emit-if (go:if
+                                      (go:expr (go:operator '!
+                                                            (list (go:expr
+                                                                   (go:operator '==
+                                                                                (list (go:expr 1) (go:expr 1)))))))
+                                      (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
+                                      (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok"))))))
+                            "if (!(1 == 1)) {\n\tfmt.Println(\"ok\")\n} else {\n\tfmt.Println(\"not ok\")\n}")
+                           (check-equal?
+                            (emit-if (go:if
+                                      (go:expr (go:operator '!
+                                                            (list (go:expr
+                                                                   (go:operator
+                                                                    '==
+                                                                    (list (go:expr
+                                                                           (go:operator '+ (list (go:expr 1) (go:expr 5))))
+                                                                          (go:expr 1)))))))
+                                      (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
+                                      (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok"))))))
+                            "if (!((1 + 5) == 1)) {\n\tfmt.Println(\"ok\")\n} else {\n\tfmt.Println(\"not ok\")\n}")
+
+                           ))))
     (displayln (format "test suite ~s" (rackunit-test-suite-name suite)))
     (display "\t")
     (run-tests suite 'verbose)))
