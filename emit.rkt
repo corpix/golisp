@@ -42,21 +42,6 @@
        (string-append +space+ (symbol->string id) +space+))
       +rbracket+))))
 
-(define (emit-var ast)
-  (match ast
-    ((go:var bindings)
-     (string-append "var" +space+ +lbracket+ +new-line+
-                    (string-join (map (lambda (v)
-                                        (string-append +tab+ (emit-var v)))
-                                      bindings)
-                                 +new-line+)
-                    +new-line+ +rbracket+))
-    ((go:var:binding name type value)
-     (string-append
-      (symbol->string name) +space+ (emit-type type)
-      (if value (string-append +space+ +eq+ +space+ (emit-expr value))
-          +empty+)))))
-
 (define (emit-type ast)
   (match ast
     ((? symbol? ast)
@@ -211,7 +196,28 @@
     ((go:type:id v _)
      (*->string v))
     ((cons k v)
-     (string-append (*->string k) +space+ (emit-func v)))))
+     (string-append (*->string k) +space+ (emit-func v)))
+    ((? symbol? ast)
+     (*->string ast))))
+
+(define (emit-var ast)
+  (match ast
+    ((go:var bindings)
+     (string-append "var" +space+ +lbracket+ +new-line+
+                    (string-join (map (lambda (v)
+                                        (string-append +tab+ (emit-var v)))
+                                      bindings)
+                                 +new-line+)
+                    +new-line+ +rbracket+))
+    ((go:var:binding name type value)
+     (string-append
+      (symbol->string name) +space+ (emit-type type)
+      (if value (string-append +space+ +eq+ +space+ (emit-expr value))
+          +empty+)))))
+
+(define (emit-go ast)
+  (match ast
+    ((go:go func) (string-append "go" +space+ (emit-expr func)))))
 
 (define (emit-id ast)     (~a ast))
 (define (emit-string ast) (~s ast))
@@ -221,7 +227,6 @@
   (match ast
     ((go:expr expr)       (emit-expr expr))
     ((? go:operator? ast) (emit-operator ast))
-    ((? go:var?      ast) (emit-var      ast))
     ((? go:type?     ast) (emit-type     ast))
     ((? go:create?   ast) (emit-create   ast))
     ((? go:def?      ast) (emit-def      ast))
@@ -229,7 +234,14 @@
     ((? go:package?  ast) (emit-package  ast))
     ((? go:imports?  ast) (emit-imports  ast))
     ((? go:func?     ast) (emit-func     ast))
+    ((? go:var?      ast) (emit-var      ast))
+    ((? go:go?       ast) (emit-go       ast))
 
+    ((go:func:call func arguments)
+     (string-append (emit-func func)
+                    +lbracket+
+                    (string-join (map emit-expr arguments) +scomma+)
+                    +rbracket+))
 
     ((? (lambda (v) (and (list? v)
                          (not (empty? v))
@@ -285,24 +297,6 @@
                                            (format "(1 ~a 2 ~a (1 ~a 2 ~a 3))"
                                                    operator operator operator operator))))
 
-               (test-suite "var"
-                           (check-equal?
-                            (emit-var (go:var (list (go:var:binding 'x (go:type:id 'y #f) #f))))
-                            (string-append "var" +space+ +lbracket+
-                                           +new-line+ +tab+ "x y"
-                                           +new-line+ +rbracket+))
-                           (check-equal?
-                            (emit-var (go:var (list (go:var:binding 'x (go:type:id 'y #f) (go:expr 1)))))
-                            (string-append "var" +space+ +lbracket+
-                                           +new-line+ +tab+ "x y = 1"
-                                           +new-line+ +rbracket+))
-                           (check-equal?
-                            (emit-var (go:var (list (go:var:binding 'x  (go:type:id 'y #f)  (go:expr 1))
-                                                    (go:var:binding 'xx (go:type:id 'yy #f) (go:expr 2)))))
-                            (string-append "var" +space+ +lbracket+
-                                           +new-line+ +tab+ "x y = 1"
-                                           +new-line+ +tab+ "xx yy = 2"
-                                           +new-line+ +rbracket+)))
                (test-suite "type"
                            (check-equal?
                             (emit-type
@@ -604,6 +598,9 @@
 
                (test-suite "func"
                            (check-equal?
+                            (emit-func 'Foo)
+                            "Foo")
+                           (check-equal?
                             (emit-func (go:func #f null null null))
                             "func () () {}")
                            (check-equal?
@@ -650,7 +647,33 @@
                                                                 `((name1       . ,(go:type:id 'type1      #f)))
                                                                 `((returnName1 . ,(go:type:id 'returnType1 #f)))
                                                                 null)))))
-                            "func (name type) (returnName returnType) {\nfunc (name1 type1) (returnName1 returnType1) {}\nfunc (name1 type1) (returnName1 returnType1) {}\n}")))))
+                            "func (name type) (returnName returnType) {\nfunc (name1 type1) (returnName1 returnType1) {}\nfunc (name1 type1) (returnName1 returnType1) {}\n}"))
+
+               (test-suite "var"
+                           (check-equal?
+                            (emit-var (go:var (list (go:var:binding 'x (go:type:id 'y #f) #f))))
+                            (string-append "var" +space+ +lbracket+
+                                           +new-line+ +tab+ "x y"
+                                           +new-line+ +rbracket+))
+                           (check-equal?
+                            (emit-var (go:var (list (go:var:binding 'x (go:type:id 'y #f) (go:expr 1)))))
+                            (string-append "var" +space+ +lbracket+
+                                           +new-line+ +tab+ "x y = 1"
+                                           +new-line+ +rbracket+))
+                           (check-equal?
+                            (emit-var (go:var (list (go:var:binding 'x  (go:type:id 'y #f)  (go:expr 1))
+                                                    (go:var:binding 'xx (go:type:id 'yy #f) (go:expr 2)))))
+                            (string-append "var" +space+ +lbracket+
+                                           +new-line+ +tab+ "x y = 1"
+                                           +new-line+ +tab+ "xx yy = 2"
+                                           +new-line+ +rbracket+)))
+
+               (test-suite "go"
+                           (check-equal?
+                            (emit-go (go:go (go:func:call (go:func #f null null null) null)))
+                            "go func () () {}()"))
+
+               )))
     (displayln (format "test suite ~s" (rackunit-test-suite-name suite)))
     (display "\t")
     (run-tests suite 'verbose)))

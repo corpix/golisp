@@ -371,7 +371,7 @@
     #:description "go routine invocation"
     #:attributes (ast)
     #:datum-literals (go)
-    (pattern (go r:FuncCall)
+    (pattern (go ~commit r:FuncCall)
              #:attr ast (go:go (attribute r.ast))))
 
   ;;
@@ -1143,8 +1143,7 @@
                (test-suite "go"
                            (check-equal?
                             (go/expand (go (func ())))
-                            (list (go:expr
-                                   (go:func:call 'go (list (go:expr (go:func #f null null null))))))))
+                            (list (go:expr (go:go (go:func:call (go:func #f null null null) null))))))
 
                (test-suite "if"
                            (check-equal?
