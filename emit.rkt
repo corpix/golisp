@@ -42,27 +42,6 @@
        (string-append +space+ (symbol->string id) +space+))
       +rbracket+))))
 
-(define (emit-package ast)
-  (match ast
-    ((go:package name) (string-append "package" +space+ (symbol->string name)))))
-
-(define (emit-imports ast)
-  (match ast
-    ((go:imports imports)
-     (string-append "import" +space+
-                    +lbracket+
-                    +new-line+
-                    (string-join (map emit-imports imports) +new-line+)
-                    +new-line+
-                    +rbracket+))
-    ((go:import package altname)
-     (string-append
-      +tab+
-      (if altname
-          (string-append (*->string altname) +space+)
-          +empty+)
-      (*->string package)))))
-
 (define (emit-var ast)
   (match ast
     ((go:var bindings)
@@ -192,18 +171,62 @@
                     +space+ +eq+ +space+
                     (emit-expr expr)))))
 
+(define (emit-package ast)
+  (match ast
+    ((go:package name) (string-append "package" +space+ (symbol->string name)))))
+
+(define (emit-imports ast)
+  (match ast
+    ((go:imports imports)
+     (string-append "import" +space+
+                    +lbracket+
+                    +new-line+
+                    (string-join (map emit-imports imports) +new-line+)
+                    +new-line+
+                    +rbracket+))
+    ((go:import package altname)
+     (string-append
+      +tab+
+      (if altname
+          (string-append (*->string altname) +space+)
+          +empty+)
+      (*->string package)))))
+
+(define (emit-func ast)
+  (match ast
+    ((go:func name input output body)
+     (string-append "func" +space+
+                    (if name
+                        (string-append (*->string name) +space+)
+                        +empty+)
+                    +lbracket+ (string-join (map emit-func input) +scomma+) +rbracket+
+                    +space+
+                    +lbracket+ (string-join (map emit-func output) +scomma+) +rbracket+
+                    +space+
+                    +lcbracket+
+                    (if (pair? body)
+                        (string-append +new-line+ (emit-expr body) +new-line+)
+                        +empty+)
+                    +rcbracket+))
+    ((cons k v) (string-append (*->string k) +space+ ))))
+
 (define (emit-id ast)     (~a ast))
 (define (emit-string ast) (~s ast))
 (define (emit-number ast) (~a ast))
 
 (define (emit-expr ast)
   (match ast
+    ((go:expr expr)       (emit-expr expr))
     ((? go:operator? ast) (emit-operator ast))
-    ((? go:package?  ast) (emit-package  ast))
-    ((? go:imports?  ast) (emit-imports  ast))
     ((? go:var?      ast) (emit-var      ast))
     ((? go:type?     ast) (emit-type     ast))
     ((? go:create?   ast) (emit-create   ast))
+    ((? go:def?      ast) (emit-def      ast))
+    ((? go:set?      ast) (emit-set      ast))
+    ((? go:package?  ast) (emit-package  ast))
+    ((? go:imports?  ast) (emit-imports  ast))
+    ((? go:func?     ast) (emit-func     ast))
+
 
     ((? (lambda (v) (and (list? v)
                          (not (empty? v))
@@ -258,32 +281,7 @@
                                                                                                (go:expr 3)))))))
                                            (format "(1 ~a 2 ~a (1 ~a 2 ~a 3))"
                                                    operator operator operator operator))))
-               (test-suite "package"
-                           (check-equal? (emit-package (go:package 'foo))
-                                         "package foo")
-                           (check-equal? (emit-package (go:package 'bar))
-                                         "package bar"))
-               (test-suite "imports"
-                           (check-equal? (emit-imports (go:imports
-                                                        (list
-                                                         (go:import 'foo #f)
-                                                         (go:import 'bar #f))))
-                                         (string-append "import" +space+
-                                                        +lbracket+
-                                                        +new-line+ +tab+ "foo"
-                                                        +new-line+ +tab+ "bar"
-                                                        +new-line+
-                                                        +rbracket+))
-                           (check-equal? (emit-imports (go:imports
-                                                        (list
-                                                         (go:import 'foo #f)
-                                                         (go:import 'bar 'baz))))
-                                         (string-append "import" +space+
-                                                        +lbracket+
-                                                        +new-line+ +tab+ "foo"
-                                                        +new-line+ +tab+ "baz" +space+ "bar"
-                                                        +new-line+
-                                                        +rbracket+)))
+
                (test-suite "var"
                            (check-equal?
                             (emit-var (go:var (list (go:var:binding 'x (go:type:id 'y #f) #f))))
@@ -551,10 +549,9 @@
                            (check-equal?
                             (emit-def (go:def 'x (go:expr 1)))
                             "x := 1")
-                           ;; FIXME: uncomment when you got func support
-                           ;; (check-equal?
-                           ;;  (emit-def (go:def 'x (go:expr (go:func #f null null null))))
-                           ;;  "")
+                           (check-equal?
+                            (emit-def (go:def 'x (go:expr (go:func #f null null null))))
+                            "x := func () () {}")
                            (check-equal?
                             (emit-def (go:def 'x (go:expr (go:create
                                                            (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
@@ -565,20 +562,50 @@
                            (check-equal?
                             (emit-set (go:set 'x (go:expr 1)))
                             "x = 1")
-                           ;; FIXME: uncomment when you got func support
-                           ;; (check-equal?
-                           ;;  (emit-set (go:set 'x (go:expr (go:func #f null null null)))))
+                           (check-equal?
+                            (emit-set (go:set 'x (go:expr (go:func #f null null null))))
+                            "x = func () () {}")
                            (check-equal?
                             (emit-set (go:set 'x (go:expr (go:create
                                                            (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
                                                            null))))
                             "x = []int{}"))
 
-               ;; (test-suite "create"
-               ;;   (check-equal?
-               ;;    (emit-create (go:create (go:type:id 'X #f) null))
-               ;;    (string-append "X")))
-               )))
+               (test-suite "package"
+                           (check-equal? (emit-package (go:package 'foo))
+                                         "package foo")
+                           (check-equal? (emit-package (go:package 'bar))
+                                         "package bar"))
+
+               (test-suite "imports"
+                           (check-equal? (emit-imports (go:imports
+                                                        (list
+                                                         (go:import 'foo #f)
+                                                         (go:import 'bar #f))))
+                                         (string-append "import" +space+
+                                                        +lbracket+
+                                                        +new-line+ +tab+ "foo"
+                                                        +new-line+ +tab+ "bar"
+                                                        +new-line+
+                                                        +rbracket+))
+                           (check-equal? (emit-imports (go:imports
+                                                        (list
+                                                         (go:import 'foo #f)
+                                                         (go:import 'bar 'baz))))
+                                         (string-append "import" +space+
+                                                        +lbracket+
+                                                        +new-line+ +tab+ "foo"
+                                                        +new-line+ +tab+ "baz" +space+ "bar"
+                                                        +new-line+
+                                                        +rbracket+)))
+
+               (test-suite "func"
+                           (check-equal?
+                            (emit-func (go:func #f null null null))
+                            "func () () {}")
+                           (check-equal?
+                            (emit-func (go:func 'hello null null null))
+                            "func hello () () {}")))))
     (displayln (format "test suite ~s" (rackunit-test-suite-name suite)))
     (display "\t")
     (run-tests suite 'verbose)))
