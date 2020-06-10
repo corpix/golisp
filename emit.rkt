@@ -28,6 +28,7 @@
 (define +asterisk+  "*")
 (define +ampersand+ "&")
 (define +colon+     ":")
+(define +semicolon+ ";")
 (define +coloneq+   ":=")
 
 ;;
@@ -234,6 +235,52 @@
                                        +rcbracket+)
                         +empty+)))))
 
+(define (emit-for ast)
+  (match ast
+    ((go:for vars seq pred iter kind body)
+     (string-append "for"
+                    (if (pair? vars)
+                        (string-append
+                         +space+
+                         (string-join (map symbol->string vars) +scomma+)
+                         +space+ +coloneq+ +space+
+                         (if (and (eq? kind 'range) (not (pair? pred)))
+                             (string-append (symbol->string kind) +space+)
+                             +empty+)
+                         (string-join (map emit-expr seq) +scomma+))
+                        +empty+)
+                    (if pred
+                        (string-append +semicolon+ +space+ (emit-expr pred))
+                        +empty+)
+                    (if iter
+                        (string-append +semicolon+ +space+ (emit-expr iter))
+                        +empty+)
+                    +space+
+                    +lcbracket+ +new-line+
+                    +tab+ (emit-expr body)
+                    +new-line+ +rcbracket+))))
+
+(define (emit-switch ast)
+  (match ast
+    ((go:switch value cases)
+     (string-append "switch" +space+ (emit-expr value) +space+
+                    +lcbracket+
+                    (string-join (map emit-switch cases) +new-line+)
+                    +rcbracket+))
+    ((go:case predicate body)
+     (string-append
+      (cond ((eq? predicate (quote default)) "default")
+            (#t (string-append "case" +space+ (emit-expr predicate))))
+      +colon+ +new-line+ +tab+
+      (string-join (map emit-expr body) +new-line+)))))
+
+
+
+(define (emit-dec ast)
+  (match ast
+    ((go:dec id) (string-append (*->string id) "--"))))
+
+
 (define (emit-id ast)     (~a ast))
 (define (emit-string ast) (~s ast))
 (define (emit-number ast) (~a ast))
@@ -252,6 +299,10 @@
     ((? go:var?      ast) (emit-var      ast))
     ((? go:go?       ast) (emit-go       ast))
     ((? go:if?       ast) (emit-if       ast))
+    ((? go:for?      ast) (emit-for      ast))
+    ((? go:switch?   ast) (emit-switch   ast))
+
+    ((? go:dec?      ast) (emit-dec      ast))
 
     ((go:func:call func arguments)
      (string-append (emit-func func)
@@ -263,10 +314,11 @@
                          (not (empty? v))
                          (symbol? (car v))))
         ast)
-     (format "~a(~a)"
-             (car ast)
-             (string-join (map emit-expr (cdr ast))
-                          +comma+)))
+     (string-append (car ast)
+                    +lbracket+
+                    (string-join (map emit-expr (cdr ast))
+                                 +comma+)
+                    +rbracket+))
 
     ((go:expr exprs) (emit-expr exprs))
 
@@ -275,8 +327,9 @@
     ((? string? ast) (emit-string ast))
     ((? number? ast) (emit-number ast))
     ((? list? ast)   (string-join
-    		      (map emit-expr ast)
-    		      +new-line+))))
+                      (map emit-expr ast)
+                      +new-line+))))
+
 
 (define go/emit emit-expr)
 
@@ -722,9 +775,72 @@
                                                                           (go:expr 1)))))))
                                       (go:expr (go:func:call 'fmt.Println (list (go:expr "ok"))))
                                       (go:expr (go:func:call 'fmt.Println (list (go:expr "not ok"))))))
-                            "if (!((1 + 5) == 1)) {\n\tfmt.Println(\"ok\")\n} else {\n\tfmt.Println(\"not ok\")\n}")
+                            "if (!((1 + 5) == 1)) {\n\tfmt.Println(\"ok\")\n} else {\n\tfmt.Println(\"not ok\")\n}"))
 
-                           ))))
+               (test-suite "for"
+                           (check-equal?
+                            (emit-for (go:for
+                                       null null #f #f #f
+                                       (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))
+                            "for {\n\tfmt.Println(k, v)\n}")
+                           (check-equal?
+                            (emit-for (go:for
+                                       (list 'k 'v)
+                                       (list (go:expr
+                                              (go:create
+                                               (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))))
+                                       #f #f #f
+                                       (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))
+                            "for k, v := []int{1, 2, 3} {\n\tfmt.Println(k, v)\n}")
+                           (check-equal?
+                            (emit-for (go:for
+                                       (list 'k 'v)
+                                       (list (go:expr
+                                              (go:create
+                                               (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
+                                               (list (go:expr 1) (go:expr 2) (go:expr 3)))))
+                                       #f #f 'range
+                                       (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))
+                            "for k, v := range []int{1, 2, 3} {\n\tfmt.Println(k, v)\n}")
+                           (check-equal?
+                            (emit-for (go:for
+                                       (list 'k)
+                                       (list (go:expr 10))
+                                       (go:expr (go:operator '> (list (go:expr 'k) (go:expr 0))))
+                                       (go:expr (go:dec 'k))
+                                       #f
+                                       (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k)))))))
+                            "for k := 10; (k > 0); k-- {\n\tfmt.Println(k)\n}"))
+
+               (test-suite "switch"
+                           (check-equal?
+                            (emit-switch
+                             (go:switch (go:expr 1)
+                                        (list (go:case
+                                               (go:expr 1)
+                                               (list (go:expr (go:func:call 'fmt.Println (list (go:expr "one"))))))
+                                              (go:case
+                                               (go:expr 2)
+                                               (list (go:expr (go:func:call 'fmt.Println (list (go:expr "two"))))))
+                                              (go:case
+                                               'default
+                                               (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default")))))))))
+                            "switch 1 {case 1:\n\tfmt.Println(\"one\")\ncase 2:\n\tfmt.Println(\"two\")\ndefault:\n\tfmt.Println(\"default\")}")
+                           (check-equal?
+                            (emit-switch
+                             (go:switch (go:expr (go:operator '+ (list (go:expr 1) (go:expr 1))))
+                                        (list (go:case
+                                               (go:expr 1)
+                                               (list (go:expr (go:func:call 'fmt.Println (list (go:expr "one"))))))
+                                              (go:case
+                                               (go:expr 2)
+                                               (list (go:expr (go:func:call 'fmt.Println (list (go:expr "two"))))))
+                                              (go:case
+                                               'default
+                                               (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default")))))))))
+                            "switch (1 + 1) {case 1:\n\tfmt.Println(\"one\")\ncase 2:\n\tfmt.Println(\"two\")\ndefault:\n\tfmt.Println(\"default\")}")))))
     (displayln (format "test suite ~s" (rackunit-test-suite-name suite)))
+
     (display "\t")
     (run-tests suite 'verbose)))

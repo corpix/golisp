@@ -391,12 +391,17 @@
   (define-syntax-class For
     #:description "for statement"
     #:attributes (ast)
-    #:datum-literals (for)
+    #:datum-literals (for range)
     (pattern (for ((~optional vars:ForVars #:defaults ((vars (syntax #f))))
-                   (~optional seq:Expr     #:defaults ((seq  (syntax #f)))))
+                   (~optional seq:ForSeq   #:defaults ((seq  (syntax #f))))
+                   (~optional pred:Expr    #:defaults ((pred (syntax #f))))
+                   (~optional iter:Expr    #:defaults ((iter (syntax #f)))))
                body:Expr ...+)
              #:attr ast (go:for (or (attribute vars.ast) null)
                                 (or (attribute seq.ast)  null)
+                                (attribute pred.ast)
+                                (attribute iter.ast)
+                                (attribute seq.kind)
                                 (attribute body.ast))))
 
   (define-syntax-class ForVars
@@ -404,6 +409,18 @@
     #:attributes (ast)
     (pattern (vars:id ...+) #:attr ast (syntax->list (syntax (vars ...))))
     (pattern vars:id        #:attr ast (list (syntax->datum (syntax vars)))))
+
+  (define-splicing-syntax-class ForSeq
+    #:description "for statement sequence"
+    #:attributes (kind ast)
+    #:datum-literals (range)
+    (pattern (k:range seq:Expr)
+             #:attr kind (attribute k)
+             #:attr ast (list (attribute seq.ast)))
+    (pattern seq:Expr
+             #:attr kind #f
+             #:attr ast (list (attribute seq.ast))))
+
 
   ;;
 
@@ -1189,26 +1206,36 @@
                            (check-equal?
                             (go/expand (for () (fmt.Println k v)))
                             (list (go:expr (go:for
-                                            null
-                                            null
+                                            null null #f #f #f
                                             (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))))
                            (check-equal?
                             (go/expand (for ((k v) (create (slice int) 1 2 3)) (fmt.Println k v)))
                             (list (go:expr (go:for
                                             (list 'k 'v)
-                                            (go:expr
-                                             (go:create
-                                              (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
-                                              (list (go:expr 1) (go:expr 2) (go:expr 3))))
+                                            (list (go:expr
+                                                   (go:create
+                                                    (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
+                                                    (list (go:expr 1) (go:expr 2) (go:expr 3)))))
+                                            #f #f #f
                                             (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))))
                            (check-equal?
-                            (go/expand (for (k (create (slice int) 1 2 3)) (fmt.Println k)))
+                            (go/expand (for ((k v) (range (create (slice int) 1 2 3))) (fmt.Println k v)))
+                            (list (go:expr (go:for
+                                            (list 'k 'v)
+                                            (list (go:expr
+                                                   (go:create
+                                                    (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
+                                                    (list (go:expr 1) (go:expr 2) (go:expr 3)))))
+                                            #f #f 'range
+                                            (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))))
+                           (check-equal?
+                            (go/expand (for (k 10 (> k 0) (-- k)) (fmt.Println k)))
                             (list (go:expr (go:for
                                             (list 'k)
-                                            (go:expr
-                                             (go:create
-                                              (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
-                                              (list (go:expr 1) (go:expr 2) (go:expr 3))))
+                                            (list (go:expr 10))
+                                            (go:expr (go:operator '> (list (go:expr 'k) (go:expr 0))))
+                                            (go:expr (go:dec 'k))
+                                            #f
                                             (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k))))))))))
                (test-suite "switch"
                            (check-equal?
@@ -1285,7 +1312,7 @@
                            (check-equal?
                             (go/expand (label xxx (for () (break xxx))))
                             (list (go:expr (go:label 'xxx
-                                                     (go:expr (go:for null null
+                                                     (go:expr (go:for null null #f #f #f
                                                                       (list (go:expr (go:break 'xxx))))))))))
                (test-suite "goto"
                            (check-equal?

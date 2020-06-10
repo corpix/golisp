@@ -35,7 +35,8 @@
 
 (struct go:go          (func)                #:prefab)
 (struct go:if          (condition then else) #:prefab)
-(struct go:for         (vars seq body)       #:prefab)
+
+(struct go:for         (vars seq pred iter kind body) #:prefab)
 
 (struct go:switch      (value cases)         #:prefab)
 (struct go:select      (cases)               #:prefab)
