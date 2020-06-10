@@ -461,10 +461,10 @@
     #:attributes (ast)
     #:datum-literals (cast assert)
     (pattern (cast value:Expr (assert type:TypeId))
-             #:attr ast (go:case (attribute value.ast)
+             #:attr ast (go:cast (attribute value.ast)
                                  (go:cast:assert (attribute type.ast))))
     (pattern (cast value:Expr type:TypeId)
-             #:attr ast (go:case (attribute value.ast)
+             #:attr ast (go:cast (attribute value.ast)
                                  (attribute type.ast))))
 
   ;;
@@ -1272,23 +1272,36 @@
                                                      (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default"))))))))))))
                (test-suite "select"
                            (check-equal?
-                            (go/expand (select
-                                           ((def x (<- ch)) (println x))
-                                         (default (println "default case"))))
+                            (go/expand (select (default (println "default case"))))
                             (list (go:expr
                                    (go:select
                                     (list
                                      (go:case
-                                      (go:expr (go:def 'x (go:expr (go:receive (go:expr 'ch)))))
-                                      (list (go:expr (go:func:call 'println (list (go:expr 'x))))))
-                                     (go:case
                                       'default
-                                      (list (go:expr (go:func:call 'println (list (go:expr "default case"))))))))))))
+                                      (list (go:expr (go:func:call 'println (list (go:expr "default case")))))))))))
+                           (check-equal?
+                            (go/expand (select
+                                         ((def x (<- ch)) (fmt.Printf "x: %+v\n" x))
+                                         (default         (fmt.Println "default case"))))
+                            (list (go:expr
+                                   (go:select
+                                    (list (go:case
+                                           (go:expr (go:def 'x (go:expr (go:receive (go:expr 'ch)))))
+                                           (list (go:expr
+                                                  (go:func:call
+                                                   'fmt.Printf
+                                                   (list (go:expr "x: %+v\n") (go:expr 'x))))))
+                                          (go:case
+                                           'default
+                                           (list (go:expr
+                                                  (go:func:call
+                                                   'fmt.Println
+                                                   (list (go:expr "default case"))))))))))))
                (test-suite "cast"
                            (check-equal? (go/expand (cast v bool))
-                                         (list (go:expr (go:case (go:expr 'v) (go:type:id 'bool #f)))))
+                                         (list (go:expr (go:cast (go:expr 'v) (go:type:id 'bool #f)))))
                            (check-equal? (go/expand (cast v (assert bool)))
-                                         (list (go:expr (go:case (go:expr 'v) (go:cast:assert (go:type:id 'bool #f)))))))
+                                         (list (go:expr (go:cast (go:expr 'v) (go:cast:assert (go:type:id 'bool #f)))))))
                (test-suite "return"
                            (check-equal? (go/expand (return))
                                          (list (go:expr (go:return null))))
@@ -1297,7 +1310,9 @@
                                                          (list (go:expr
                                                                 (go:operator '+ (list
                                                                                  (go:expr 1)
-                                                                                 (go:expr 1))))))))))
+                                                                                 (go:expr 1)))))))))
+                           (check-equal? (go/expand (return 1 1))
+                                         (list (go:expr (go:return (list (go:expr 1) (go:expr 1)))))))
                (test-suite "break"
                            (check-equal? (go/expand (break))
                                          (list (go:expr (go:break #f))))
@@ -1389,14 +1404,6 @@
 
                ;; other expression cases
 
-               (test-suite "dummy"
-                           (check-equal? (go/expand (package main)
-                                                    (import os fmt)
-                                                    (func (main () ()) (println os.Args)))
-                                         (list (go:expr (go:package 'main))
-                                               (go:expr (go:imports (list (go:import 'os #f) (go:import 'fmt #f))))
-                                               (go:expr (go:func 'main null null (list (go:expr (go:func:call 'println (list (go:expr 'os.Args))))))))))
-
                (test-suite "primitive"
                            (test-case "nil"
                              (check-equal? (go/expand nil)                (list (go:expr 'nil))))
@@ -1412,6 +1419,14 @@
                              (check-equal? (go/expand "hello")            (list (go:expr "hello"))))
                            (test-case "identifier"
                              (check-equal? (go/expand runtime.GOMAXPROCS) (list (go:expr 'runtime.GOMAXPROCS)))))
+
+               (test-suite "dummy"
+                           (check-equal? (go/expand (package main)
+                                                    (import os fmt)
+                                                    (func (main () ()) (println os.Args)))
+                                         (list (go:expr (go:package 'main))
+                                               (go:expr (go:imports (list (go:import 'os #f) (go:import 'fmt #f))))
+                                               (go:expr (go:func 'main null null (list (go:expr (go:func:call 'println (list (go:expr 'os.Args))))))))))
 
                (test-suite "complex"
                            (test-case "cli"
