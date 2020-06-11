@@ -15,7 +15,7 @@
 (struct go:var:binding (name type value) #:prefab)
 (struct go:const       (bindings)        #:prefab)
 
-(struct go:type                    (value)           #:prefab)
+(struct go:type                    (name value)      #:prefab)
 (struct go:type:id                 (name type)       #:prefab)
 (struct go:type:id:map             (key value)       #:prefab)
 (struct go:type:id:struct          (fields)          #:prefab)
@@ -35,8 +35,8 @@
 
 (struct go:go          (func)                #:prefab)
 (struct go:if          (condition then else) #:prefab)
-
 (struct go:for         (vars seq pred iter kind body) #:prefab)
+(struct go:begin       (exprs) #:prefab)
 
 (struct go:switch      (value cases)         #:prefab)
 (struct go:select      (cases)               #:prefab)
@@ -47,12 +47,14 @@
 (struct go:return      (values)              #:prefab)
 (struct go:break       (label)               #:prefab)
 (struct go:continue    (label)               #:prefab)
+(struct go:spread      (expr)                #:prefab)
 (struct go:label       (name body)           #:prefab)
 (struct go:goto        (label)               #:prefab)
 (struct go:iota        ()                    #:prefab)
 (struct go:defer       (body)                #:prefab)
 (struct go:slice       (value start end)     #:prefab)
 (struct go:index       (value key)           #:prefab)
+(struct go:key         (object key)          #:prefab)
 (struct go:send        (chan value)          #:prefab)
 (struct go:receive     (chan)                #:prefab)
 (struct go:inc         (id)                  #:prefab)
@@ -60,8 +62,8 @@
 (struct go:ref         (expr)                #:prefab)
 (struct go:deref       (expr)                #:prefab)
 
-(struct go:func      (name input output body) #:prefab)
-(struct go:func:call (func arguments)         #:prefab)
+(struct go:func      (name input output struct body) #:prefab)
+(struct go:func:call (func arguments)                #:prefab)
 
 ;;
 
