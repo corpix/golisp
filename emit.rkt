@@ -882,6 +882,11 @@
                             (emit-func (go:func (cons #f #f) 'hello null null null))
                             "func hello () () {}")
                            (check-equal?
+                            (emit-func (go:func (cons (go:type:id 'ptr (go:type:id:ptr (go:type:id 'Struct #f))) 's)
+                                                'hello
+                                                null null null))
+                            "func (s *Struct) hello () () {}")
+                           (check-equal?
                             (emit-func (go:func (cons #f #f) #f (list (go:type:id 't #f)) null null))
                             "func (t) () {}")
                            (check-equal?

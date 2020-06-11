@@ -332,10 +332,12 @@
     #:attributes (ast)
     #:datum-literals (func struct)
     #:commit
-    (pattern (func (~optional (struct struct-type:TypeId struct-binding:id)
-                              #:defaults ((struct-type (syntax #f))
-                                          (struct-binding (syntax #f))))
-                   ((~optional name:id  #:defaults ((name (syntax #f))))
+    (pattern (func ((~optional
+                     (~or* name:id
+                           (name:id (struct-binding:id struct-type:TypeId)))
+                     #:defaults ((name (syntax #f))
+                                 (struct-type (syntax #f))
+                                 (struct-binding (syntax #f))))
                     (~optional i:FuncIO #:defaults ((i (syntax null))))
                     (~optional o:FuncIO #:defaults ((o (syntax null)))))
                    body:Expr ...)
@@ -1144,6 +1146,11 @@
                            (check-equal?
                             (go/expand (func (hello () ())))
                             (list (go:expr (go:func (cons #f #f) 'hello null null null))))
+                           (check-equal?
+                            (go/expand (func ((hello (s (ptr Struct))) () ())))
+                            (list (go:expr (go:func (cons (go:type:id 'ptr (go:type:id:ptr (go:type:id 'Struct #f))) 's)
+                                                    'hello
+                                                    null null null))))
                            (check-equal?
                             (go/expand (func ((t) ())))
                             (list (go:expr (go:func (cons #f #f) #f (list (go:type:id 't #f)) null null))))
