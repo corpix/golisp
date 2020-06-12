@@ -38,7 +38,7 @@
 
 (define (emit-operator ast)
   (match ast
-    ((go:operator id operands)
+    ((go:operator id (list operands ...))
      (string-append
       +lbracket+
       (if (pair? (cdr operands))
@@ -46,7 +46,9 @@
            (map emit-expr operands)
            (string-append +space+ (symbol->string id) +space+))
           (string-append (symbol->string id) (emit-expr (car operands))))
-      +rbracket+))))
+      +rbracket+))
+    ((go:operator id operand)
+     (emit-operator (go:operator id (list operand))))))
 
 (define (emit-type ast)
   (match ast
@@ -123,6 +125,12 @@
                                         (emit-expr (cdr kv)))
                          (emit-expr kv)))))
     (match ast
+      ((go:create (go:ref (go:type:id kind type)) expr)
+       (string-append (emit-ref (go:create-type ast))
+                      (emit-create (list kind expr))))
+      ((go:create (go:deref (go:type:id kind type)) expr)
+       (string-append (emit-deref (go:create-type ast))
+                      (emit-create (list kind expr))))
       ((go:create (go:type:id kind type) expr)
        (string-append (emit-type (go:create-type ast))
                       (emit-create (list kind expr))))
@@ -427,11 +435,15 @@
 
 (define (emit-ref ast)
   (match ast
-    ((go:ref expr) (string-append "&" (emit-expr expr)))))
+    ((go:ref (? go:type:id?)) (emit-ref (emit-type (go:ref-expr ast))))
+    ((go:ref expr)            (emit-ref (emit-expr expr)))
+    ((? string? ast)          (string-append "&" ast))))
 
 (define (emit-deref ast)
   (match ast
-    ((go:deref expr) (string-append "*"(emit-expr expr)))))
+    ((go:deref (? go:type:id?)) (emit-deref (emit-type (go:deref-expr ast))))
+    ((go:deref expr)            (emit-deref (emit-expr expr)))
+    ((? string? ast)            (string-append "*" ast))))
 
 
 (define (emit-id ast)     (~a ast))
@@ -526,6 +538,10 @@
                                                                           (go:expr 1)
                                                                           (go:expr 2))))
                                              (string-append +lbracket+ "1" +space+ (*->string operator) +space+  "2" +rbracket+))
+                               (check-equal? (emit-operator (go:operator operator (go:expr 1)))
+                                             (string-append +lbracket+ (*->string operator) "1" +rbracket+))
+                               (check-equal? (emit-operator (go:operator operator (list (go:expr 1))))
+                                             (string-append +lbracket+ (*->string operator) "1" +rbracket+))
                                (check-equal? (emit-operator (go:operator operator
                                                                          (list
                                                                           (go:expr 1)
@@ -581,11 +597,11 @@
                            (check-equal?
                             (emit-type
                              (go:type #f (go:type:id
-                                       'struct
-                                       (go:type:id:struct
-                                        (list (go:type:id:struct:field #f (go:type:id 'io.Reader #f) #f)
-                                              (go:type:id:struct:field 'x (go:type:id 'map (go:type:id:map (go:type:id 'string #f) (go:type:id 'string #f))) #f)
-                                              (go:type:id:struct:field 'y (go:type:id 'X #f) #f))))))
+                                          'struct
+                                          (go:type:id:struct
+                                           (list (go:type:id:struct:field #f (go:type:id 'io.Reader #f) #f)
+                                                 (go:type:id:struct:field 'x (go:type:id 'map (go:type:id:map (go:type:id 'string #f) (go:type:id 'string #f))) #f)
+                                                 (go:type:id:struct:field 'y (go:type:id 'X #f) #f))))))
                             (string-append "struct"
                                            +lcbracket+
                                            +new-line+ +tab+ "io.Reader"
@@ -596,11 +612,11 @@
                            (check-equal?
                             (emit-type
                              (go:type #f (go:type:id
-                                       'struct
-                                       (go:type:id:struct
-                                        (list (go:type:id:struct:field #f (go:type:id 'io.Reader #f) "foo:bar")
-                                              (go:type:id:struct:field 'x (go:type:id 'map (go:type:id:map (go:type:id 'string #f) (go:type:id 'string #f))) "bar:baz")
-                                              (go:type:id:struct:field 'y (go:type:id 'X #f) "baz:qux"))))))
+                                          'struct
+                                          (go:type:id:struct
+                                           (list (go:type:id:struct:field #f (go:type:id 'io.Reader #f) "foo:bar")
+                                                 (go:type:id:struct:field 'x (go:type:id 'map (go:type:id:map (go:type:id 'string #f) (go:type:id 'string #f))) "bar:baz")
+                                                 (go:type:id:struct:field 'y (go:type:id 'X #f) "baz:qux"))))))
                             (string-append "struct"
                                            +lcbracket+
                                            +new-line+ +tab+ "io.Reader `foo:bar`"
@@ -614,9 +630,9 @@
                            (check-equal?
                             (emit-type
                              (go:type #f (go:type:id
-                                       'interface
-                                       (go:type:id:interface
-                                        (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f)))))))
+                                          'interface
+                                          (go:type:id:interface
+                                           (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f)))))))
                             (string-append "interface"
                                            +lcbracket+
                                            +new-line+ +tab+ "io.Reader"
@@ -629,21 +645,21 @@
                             "[]string")
                            (check-equal?
                             (emit-type (go:type #f (go:type:id 'slice
-                                                            (go:type:id:slice
-                                                             (go:type:id 'struct (go:type:id:struct (list)))))))
+                                                               (go:type:id:slice
+                                                                (go:type:id 'struct (go:type:id:struct (list)))))))
                             (string-append "[]struct" +lcbracket+
                                            +new-line+ +new-line+
                                            +rcbracket+))
                            (check-equal?
                             (emit-type
                              (go:type #f (go:type:id 'array (go:type:id:array (go:type:id 'string #f)
-                                                                           5))))
+                                                                              5))))
                             "[5]string")
                            (check-equal?
                             (emit-type (go:type #f (go:type:id
-                                                 'array
-                                                 (go:type:id:array (go:type:id 'struct (go:type:id:struct (list)))
-                                                                   5))))
+                                                    'array
+                                                    (go:type:id:array (go:type:id 'struct (go:type:id:struct (list)))
+                                                                      5))))
                             (string-append "[5]struct" +lcbracket+
                                            +new-line+ +new-line+
                                            +rcbracket+))
@@ -719,6 +735,10 @@
                             "int64(666)")
                            (check-equal?
                             (emit-create
+                             (go:create (go:type:id 'X #f) null))
+                            "X{}")
+                           (check-equal?
+                            (emit-create
                              (go:create (go:type:id 'X #f) (go:expr 'nil)))
                             "X(nil)")
                            (check-equal?
@@ -737,6 +757,12 @@
                                         (list (go:expr 1) (go:expr 2)
                                               (go:expr 3) (go:expr 4))))
                             "[4]X{1, 2, 3, 4}")
+                           (check-equal?
+                            (emit-create (go:create (go:ref (go:type:id 'X #f)) (go:expr 'nil)))
+                            "&X(nil)")
+                           (check-equal?
+                            (emit-create (go:create (go:deref (go:type:id 'X #f)) (go:expr 'nil)))
+                            "*X(nil)")
                            (check-equal?
                             (emit-create
                              (go:create (go:type:id
@@ -983,7 +1009,7 @@
                                            +new-line+ +rbracket+))
                            (check-equal?
                             (emit-const (go:const (list (go:var:binding 'x  (go:type:id 'y #f)  (go:expr 1))
-                                                    (go:var:binding 'xx (go:type:id 'yy #f) (go:expr 2)))))
+                                                        (go:var:binding 'xx (go:type:id 'yy #f) (go:expr 2)))))
                             (string-append "const" +space+ +lbracket+
                                            +new-line+ +tab+ "x y = 1"
                                            +new-line+ +tab+ "xx yy = 2"
@@ -1044,7 +1070,23 @@
                                       (go:expr
                                        (go:begin (list (go:expr (go:func:call 'fmt.Println (list (go:expr "ok")))))))
                                       #f))
-                            "if (1 == 1) {\n\tfmt.Println(\"ok\")\n}"))
+                            "if (1 == 1) {\n\tfmt.Println(\"ok\")\n}")
+                           (check-equal?
+                            (emit-if (go:if
+                                      (go:expr #t)
+                                      (go:begin
+                                       (list (go:expr (go:func:call 'fmt.Println (list (go:expr 1))))
+                                             (go:expr (go:func:call 'fmt.Println (list (go:expr 2))))))
+                                      #f))
+                            "if true {\n\tfmt.Println(1)\nfmt.Println(2)\n}")
+                           (check-equal?
+                            (emit-if (go:if
+                                      (go:operator '! (list (go:expr #t)))
+                                      (go:begin
+                                       (list (go:expr (go:func:call 'fmt.Println (list (go:expr 1))))
+                                             (go:expr (go:func:call 'fmt.Println (list (go:expr 2))))))
+                                      #f))
+                            "if (!true) {\n\tfmt.Println(1)\nfmt.Println(2)\n}"))
 
                (test-suite "for"
                            (check-equal?
@@ -1324,9 +1366,7 @@
                                                                                       (list (go:expr 'RootAction))))
                                                                      (go:expr (go:func:call 'app.Run
                                                                                             (list (go:expr 'os.Args)))))))))
-                              "package main\nimport (\n\t\"os\"\n\t\"fmt\"\n\tcli \"github.com/urfave/cli/v2\"\n)\nvar (\n\tFlags []cli.Flag = []cli.Flag{cli.BoolFlag{Name: \"test\", Usage: \"test flag\"}}\n)\nfunc RootAction (ctx *cli.Context) (error) {\n\tfmt.Println(\"hello from root, test is\", ctx.Bool(\"test\"))\n}\nfunc main () () {\n\tapp := *cli.App{}\n\tapp.Flags = Flags\n\tapp.Action = RootAction\n\tapp.Run(os.Args)\n}")))
-
-               )))
+                              "package main\nimport (\n\t\"os\"\n\t\"fmt\"\n\tcli \"github.com/urfave/cli/v2\"\n)\nvar (\n\tFlags []cli.Flag = []cli.Flag{cli.BoolFlag{Name: \"test\", Usage: \"test flag\"}}\n)\nfunc RootAction (ctx *cli.Context) (error) {\n\tfmt.Println(\"hello from root, test is\", ctx.Bool(\"test\"))\n}\nfunc main () () {\n\tapp := *cli.App{}\n\tapp.Flags = Flags\n\tapp.Action = RootAction\n\tapp.Run(os.Args)\n}"))))))
     (displayln (format "test suite ~s" (rackunit-test-suite-name suite)))
     (display "\t")
     (run-tests suite 'verbose)))

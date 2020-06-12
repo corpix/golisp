@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/coreos/go-etcd/etcd"
+	"github.com/corpix/revip"
 	"github.com/miekg/dns"
+	cli "github/urfave/cli/v2"
 	"log"
 	"net"
 	"regexp"
@@ -13,9 +15,10 @@ import (
 )
 
 var (
-	DefaultEtcdHosts   []string = []string{"http://127.0.0.1:4001"}
-	DefaultAddr        string   = "0.0.0.0:5353"
-	DefaultHealthQuery string   = "id.server."
+	DefaultEtcdHosts   []string   = []string{"http://127.0.0.1:4001"}
+	DefaultAddr        string     = "0.0.0.0:5353"
+	DefaultHealthQuery string     = "id.server."
+	Flags              []cli.Flag = []cli.Flag(&cli.StringFlag{Name: "log-level", Aliases: []string{"l"}, Usage: "logging level (debug, info, error)", Value: "info"})
 )
 
 func NewClient() (client *etcd.Client) {
@@ -140,13 +143,11 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 func (s *Server) HealthCheck() {
 	c, m := new(dns.Client), new(dns.Msg)
 	c.Net, m.Question = "tcp", make([]dns.Question, 1)
-	m.Question[0] = dns.Question{DefaultHealthQuery, dns.TypeTXT, dns.ClassCHAOS}
+	m.Question[0] = dns.Question(DefaultHealthQuery(dns.TypeTXT, dns.ClassCHAOS))
 	for _, serv := range s.router.Servers() {
-		if !check(c, m, serv) {
-			if !check(c, m, serv) {
-				log.Printf("healthcheck failed for %s", serv)
-				s.router.RemoveServer(serv)
-			}
+		if (!check(c, m, serv)) || (!check(c, m, serv)) {
+			log.Printf("healthcheck failed for %s", serv)
+			s.router.RemoveServer(serv)
 		}
 	}
 }

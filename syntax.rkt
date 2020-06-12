@@ -117,22 +117,24 @@
 
   (define-syntax-class TypeIdMap
     #:description "map type description"
-    #:attributes (ast id)
+    #:attributes (id kind ast)
     #:datum-literals (map)
     (pattern (map k:TypeId v:TypeId)
-             #:attr id 'map
-             #:attr ast (go:type:id:map (attribute k.ast)
+             #:attr id   (quote map)
+             #:attr kind (quote complex)
+             #:attr ast  (go:type:id:map (attribute k.ast)
                                         (attribute v.ast))))
 
   (define-syntax-class TypeIdStruct
     #:description "struct type description"
-    #:attributes (ast id)
+    #:attributes (id kind ast)
     #:datum-literals (struct)
-    (pattern (struct xs:TypeIdStructField ...)
-             #:attr id 'struct
-             #:attr ast (go:type:id:struct (attribute xs.ast))))
+    (pattern (struct xs:TypeIdStruct/Field ...)
+             #:attr id   (quote struct)
+             #:attr kind (quote complex)
+             #:attr ast  (go:type:id:struct (attribute xs.ast))))
 
-  (define-syntax-class TypeIdStructField
+  (define-syntax-class TypeIdStruct/Field
     #:description "struct type field"
     #:attributes (ast)
     (pattern (k:id v:TypeId (~optional tag:string #:defaults ((tag (syntax #f)))))
@@ -145,13 +147,14 @@
 
   (define-syntax-class TypeIdInterface
     #:description "interface type description"
-    #:attributes (ast id)
+    #:attributes (id kind ast)
     #:datum-literals (interface)
-    (pattern (interface xs:TypeIdInterfaceField ...)
-             #:attr id 'interface
-             #:attr ast (go:type:id:interface (attribute xs.ast))))
+    (pattern (interface xs:TypeIdInterface/Field ...)
+             #:attr id   (quote interface)
+             #:attr kind (quote complex)
+             #:attr ast  (go:type:id:interface (attribute xs.ast))))
 
-  (define-syntax-class TypeIdInterfaceField
+  (define-syntax-class TypeIdInterface/Field
     #:description "interface type field"
     #:attributes (ast)
     (pattern (k:id v:TypeId)
@@ -165,59 +168,66 @@
 
   (define-syntax-class TypeIdSlice
     #:description "slice type description"
-    #:attributes (ast id)
+    #:attributes (id kind ast)
     #:datum-literals (slice)
     (pattern (slice t:TypeId)
-             #:attr id 'slice
-             #:attr ast (go:type:id:slice (attribute t.ast))))
+             #:attr id   (quote slice)
+             #:attr kind (quote complex)
+             #:attr ast  (go:type:id:slice (attribute t.ast))))
 
   (define-syntax-class TypeIdArray
     #:description "array type description"
-    #:attributes (ast id)
+    #:attributes (id kind ast)
     #:datum-literals (array ...)
     (pattern (array t:TypeId (~or* size:integer size:...))
-             #:attr id 'array
+             #:attr id (quote array)
+             #:attr kind (quote complex)
              #:attr ast (go:type:id:array (attribute t.ast) (syntax->datum (syntax size)))))
 
   (define-syntax-class TypeIdPtr
     #:description "pointer type description"
-    #:attributes (ast id)
+    #:attributes (id kind ast)
     #:datum-literals (ptr)
     (pattern (ptr t:TypeId)
-             #:attr id 'ptr
-             #:attr ast (go:type:id:ptr (attribute t.ast))))
+             #:attr id   (quote ptr)
+             #:attr kind (quote primitive)
+             #:attr ast  (go:type:id:ptr (attribute t.ast))))
 
   (define-syntax-class TypeIdChan
     #:description "chan type description"
-    #:attributes (ast id)
+    #:attributes (id kind ast)
     #:datum-literals (chan -> <-)
     (pattern (chan (~optional (~or* direction:-> direction:<-)
                               #:defaults ((direction (syntax #f))))
                    t:TypeId)
-             #:attr id 'chan
+             #:attr id   (quote chan)
+             #:attr kind (quote primitive)
              #:attr ast  (go:type:id:chan (syntax->datum (syntax direction)) (attribute t.ast))))
 
   (define-syntax-class TypeIdFunc
     #:description "func type description"
-    #:attributes (ast id)
+    #:attributes (id kind ast)
     #:datum-literals (func)
     (pattern (func ((~optional i:FuncIO #:defaults ((i (syntax null))))
                     (~optional o:FuncIO #:defaults ((o (syntax null))))))
-             #:attr id 'func
-             #:attr ast (go:type:id:func
-                         (or (attribute i.ast) null)
-                         (or (attribute o.ast) null))))
+             #:attr id   (quote func)
+             #:attr kind (quote primitive)
+             #:attr ast  (go:type:id:func
+                          (or (attribute i.ast) null)
+                          (or (attribute o.ast) null))))
 
   (define-syntax-class TypeId%
     #:description "custom user type description"
-    #:attributes (id ast)
+    #:attributes (id kind ast)
     (pattern t:id
-             #:attr id (syntax->datum (syntax t))
+             #:attr id   (syntax->datum (syntax t))
+             #:attr kind (quote complex)
              #:attr ast  #f))
 
   (define-syntax-class TypeId
     #:description "type id description"
-    #:attributes (ast)
+    #:attributes (kind ast)
+    #:datum-literals (cast ref deref)
     (pattern (~or* t:TypeIdMap
                    t:TypeIdStruct
                    t:TypeIdInterface
@@ -227,16 +237,28 @@
                    t:TypeIdChan
                    t:TypeIdFunc
                    t:TypeId%)
-             #:attr ast (go:type:id (attribute t.id) (attribute t.ast))))
+             #:attr kind (attribute t.kind)
+             #:attr ast (go:type:id (attribute t.id) (attribute t.ast)))
+    (pattern (cast v:TypeId)
+             #:attr kind (attribute v.kind)
+             #:attr ast  (attribute v.ast))
+    (pattern (ref v:TypeId)
+             #:attr kind (attribute v.kind)
+             #:attr ast  (go:ref   (attribute v.ast)))
+    (pattern (deref v:TypeId)
+             #:attr kind (attribute v.kind)
+             #:attr ast  (go:deref (attribute v.ast))))
 
   (define-syntax-class Type
     #:description "type definition"
-    #:attributes (ast)
+    #:attributes (kind ast)
     #:datum-literals (type)
     (pattern (type t:TypeId)
-             #:attr ast (go:type #f (attribute t.ast)))
+             #:attr kind (attribute t.kind)
+             #:attr ast  (go:type #f (attribute t.ast)))
     (pattern (type (name:id t:TypeId))
-             #:attr ast (go:type (attribute name) (attribute t.ast))))
+             #:attr kind (attribute t.kind)
+             #:attr ast  (go:type (attribute name) (attribute t.ast))))
 
   ;;
 
@@ -251,11 +273,14 @@
   (define-syntax-class Create
     #:description "initialization of the type"
     #:attributes (ast)
-    #:datum-literals (create cast)
-    (pattern (create (cast t:TypeId) xs:CompositeTypeInitializer)
+    #:datum-literals (create slice array struct map )
+    #:commit
+    (pattern (create t:TypeId)
+             #:attr ast (go:create (attribute t.ast) null))
+    (pattern (create t:TypeId xs:CompositeTypeInitializer)
              #:attr ast (go:create (attribute t.ast)
                                    (attribute xs.ast)))
-    (pattern (create t:TypeId xs:CompositeTypeInitializer ...)
+    (pattern (create t:TypeId (xs:CompositeTypeInitializer ...))
              #:attr ast (go:create (attribute t.ast)
                                    (attribute xs.ast))))
 
@@ -397,6 +422,24 @@
              #:attr ast (go:if (attribute condition.ast)
                                (attribute then.ast)
                                (attribute else.ast))))
+
+  (define-syntax-class When
+    #:description "when statement"
+    #:attributes (ast)
+    #:datum-literals (when)
+    (pattern (when condition:Expr body:Expr ...)
+             #:attr ast (go:if (attribute condition.ast)
+                               (go:begin (attribute body.ast))
+                               #f)))
+
+  (define-syntax-class Unless
+    #:description "unless statement"
+    #:attributes (ast)
+    #:datum-literals (unless)
+    (pattern (unless condition:Expr then:Expr ...)
+             #:attr ast (go:if (go:operator (quote !) (attribute condition.ast))
+                               (go:begin (attribute then.ast))
+                               #f)))
 
   ;;
 
@@ -638,7 +681,8 @@
                    v:Package  v:Import   v:Var
                    v:Type     v:Create
                    v:Def      v:Go
-                   v:If       v:For      v:Begin
+                   v:If       v:When     v:Unless
+                   v:For      v:Begin
                    v:Switch   v:Select
                    v:Cast     v:Return   v:Break  v:Continue
                    v:Spread
@@ -667,6 +711,8 @@
   (set      Def)
   (go       Go)
   (if       If)
+  (when     When)
+  (unless   Unless)
   (for      For)
   (begin    Begin)
   (switch   Switch)
@@ -979,26 +1025,34 @@
                             (list (go:expr (go:create (go:type:id 'X #f) null))))
                            (check-equal?
                             (go/expand (create X nil))
-                            (list (go:expr (go:create (go:type:id 'X #f) (list (go:expr 'nil))))))
+                            (list (go:expr (go:create (go:type:id 'X #f) (go:expr 'nil)))))
                            (check-equal?
                             (go/expand (create (cast X) nil))
                             (list (go:expr (go:create (go:type:id 'X #f) (go:expr 'nil)))))
                            (check-equal?
-                            (go/expand (create (slice int) 1 2 3 4))
+                            (go/expand (create (ref X) nil))
+                            (list (go:expr (go:create (go:ref (go:type:id 'X #f))
+                                                      (go:expr 'nil)))))
+                           (check-equal?
+                            (go/expand (create (deref X) nil))
+                            (list (go:expr (go:create (go:deref (go:type:id 'X #f))
+                                                      (go:expr 'nil)))))
+                           (check-equal?
+                            (go/expand (create (slice int) (1 2 3 4)))
                             (list (go:expr (go:create (go:type:id 'slice (go:type:id:slice (go:type:id 'int #f)))
                                                       (list (go:expr 1) (go:expr 2)
                                                             (go:expr 3) (go:expr 4))))))
                            (check-equal?
-                            (go/expand (create (array int 4) 1 2 3 4))
+                            (go/expand (create (array int 4) (1 2 3 4)))
                             (list (go:expr (go:create (go:type:id 'array (go:type:id:array (go:type:id 'int #f) 4))
                                                       (list (go:expr 1) (go:expr 2)
                                                             (go:expr 3) (go:expr 4))))))
                            (check-equal?
                             (go/expand (create (map string int)
-                                               ("1" 1)
-                                               ("2" 2)
-                                               ("3" 3)
-                                               ("4" 4)))
+                                               (("1" 1)
+                                                ("2" 2)
+                                                ("3" 3)
+                                                ("4" 4))))
                             (list (go:expr (go:create (go:type:id 'map
                                                                   (go:type:id:map (go:type:id 'string #f)
                                                                                   (go:type:id 'int    #f)))
@@ -1006,7 +1060,7 @@
                                                             (cons "3" (go:expr 3)) (cons "4" (go:expr 4)))))))
 
                            (check-equal?
-                            (go/expand (create (struct (x int)) 1))
+                            (go/expand (create (struct (x int)) (1)))
                             (list
                              (go:expr
                               (go:create (go:type:id 'struct
@@ -1014,7 +1068,7 @@
                                                       (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
                                          (list (go:expr 1))))))
                            (check-equal?
-                            (go/expand (create (struct (x (interface))) (NewReader)))
+                            (go/expand (create (struct (x (interface))) ((NewReader))))
                             (list
                              (go:expr
                               (go:create (go:type:id 'struct
@@ -1031,10 +1085,10 @@
                                                       null))))
                            (check-equal?
                             (go/expand (create (map string (struct (x int)))
-                                               ("1" (create (struct (x int)) (x 1)))
-                                               ("2" (create (struct (x int)) (x 2)))
-                                               ("3" (create (struct (x int)) (x 3)))
-                                               ("4" (create (struct (x int)) (x 4)))))
+                                               (("1" (create (struct (x int)) (x 1)))
+                                                ("2" (create (struct (x int)) (x 2)))
+                                                ("3" (create (struct (x int)) (x 3)))
+                                                ("4" (create (struct (x int)) (x 4))))))
                             (list (go:expr
                                    (go:create
                                     (go:type:id 'map
@@ -1043,16 +1097,16 @@
                                                  (go:type:id 'struct (go:type:id:struct (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))))
                                     (list (cons "1" (go:expr (go:create
                                                               (go:type:id 'struct (go:type:id:struct (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
-                                                              (list (cons 'x (go:expr 1))))))
+                                                              (cons 'x (go:expr 1)))))
                                           (cons "2" (go:expr (go:create
                                                               (go:type:id 'struct (go:type:id:struct (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
-                                                              (list (cons 'x (go:expr 2))))))
+                                                              (cons 'x (go:expr 2)))))
                                           (cons "3" (go:expr (go:create
                                                               (go:type:id 'struct (go:type:id:struct (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
-                                                              (list (cons 'x (go:expr 3))))))
+                                                              (cons 'x (go:expr 3)))))
                                           (cons "4" (go:expr (go:create
                                                               (go:type:id 'struct (go:type:id:struct (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
-                                                              (list (cons 'x (go:expr 4))))))))))))
+                                                              (cons 'x (go:expr 4)))))))))))
 
                (test-suite "def"
                            (check-equal?
@@ -1304,6 +1358,33 @@
                                     (go:expr
                                      (go:begin (list (go:expr (go:func:call 'fmt.Println (list (go:expr "ok")))))))
                                     #f)))))
+
+               (test-suite "when"
+                           (check-equal?
+                            (go/expand (when #t
+                                         (fmt.Println 1)
+                                         (fmt.Println 2)))
+                            (list (go:expr
+                                   (go:if
+                                    (go:expr #t)
+                                    (go:begin
+                                     (list (go:expr (go:func:call 'fmt.Println (list (go:expr 1))))
+                                           (go:expr (go:func:call 'fmt.Println (list (go:expr 2))))))
+                                    #f)))))
+
+               (test-suite "unless"
+                           (check-equal?
+                            (go/expand (unless #t
+                                         (fmt.Println 1)
+                                         (fmt.Println 2)))
+                            (list (go:expr
+                                   (go:if
+                                    (go:operator '! (go:expr #t))
+                                    (go:begin
+                                     (list (go:expr (go:func:call 'fmt.Println (list (go:expr 1))))
+                                           (go:expr (go:func:call 'fmt.Println (list (go:expr 2))))))
+                                    #f)))))
+
                (test-suite "for"
                            (check-equal?
                             (go/expand (for () (fmt.Println k v)))
@@ -1311,7 +1392,7 @@
                                             null null #f #f #f
                                             (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))))
                            (check-equal?
-                            (go/expand (for ((k v) (create (slice int) 1 2 3)) (fmt.Println k v)))
+                            (go/expand (for ((k v) (create (slice int) (1 2 3))) (fmt.Println k v)))
                             (list (go:expr (go:for
                                             (list 'k 'v)
                                             (list (go:expr
@@ -1321,7 +1402,7 @@
                                             #f #f #f
                                             (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))))
                            (check-equal?
-                            (go/expand (for ((k v) (range (create (slice int) 1 2 3))) (fmt.Println k v)))
+                            (go/expand (for ((k v) (range (create (slice int) (1 2 3)))) (fmt.Println k v)))
                             (list (go:expr (go:for
                                             (list 'k 'v)
                                             (list (go:expr
@@ -1562,9 +1643,9 @@
 
                                          (var (Flags (slice cli.Flag)
                                                      (create (slice cli.Flag)
-                                                             (create cli.BoolFlag
-                                                                     (Name "test")
-                                                                     (Usage "test flag")))))
+                                                             ((create cli.BoolFlag
+                                                                      ((Name "test")
+                                                                       (Usage "test flag")))))))
 
                                          (func (RootAction ((ctx (ptr cli.Context))) (error))
                                                (fmt.Println "hello from root, test is" (ctx.Bool "test")))
@@ -1605,7 +1686,7 @@
                                                                       (list (go:expr (go:create
                                                                                 (go:type:id 'ptr
                                                                                             (go:type:id:ptr (go:type:id 'cli.App #f)))
-                                                                                null)))))
+                                                                                #f)))))
                                                             (go:expr (go:set (list (go:expr 'app.Flags))
                                                                              (list (go:expr 'Flags))))
                                                             (go:expr (go:set (list (go:expr 'app.Action))
