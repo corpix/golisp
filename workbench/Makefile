@@ -15,6 +15,8 @@ etcd:
 PHONY: build
 build:
 	racket -e '(require "./main.rkt")'
+	go fmt ./main.go
+	go build -o main ./main.go
 
 .PHONY: fmt
 fmt:

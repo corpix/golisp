@@ -5,9 +5,12 @@ import (
 	"github.com/coreos/go-etcd/etcd"
 	"github.com/corpix/revip"
 	"github.com/miekg/dns"
-	cli "github/urfave/cli/v2"
+	"github.com/pkg/errors"
+	cli "github.com/urfave/cli/v2"
+	yaml "gopkg.in/yaml.v2"
 	"log"
 	"net"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -15,14 +18,103 @@ import (
 )
 
 var (
-	DefaultEtcdHosts   []string   = []string{"http://127.0.0.1:4001"}
-	DefaultAddr        string     = "0.0.0.0:5353"
-	DefaultHealthQuery string     = "id.server."
-	Flags              []cli.Flag = []cli.Flag(&cli.StringFlag{Name: "log-level", Aliases: []string{"l"}, Usage: "logging level (debug, info, error)", Value: "info"})
+	DefaultConfig          Config      = Config{}
+	DefaultListen          string      = "0.0.0.0:5353"
+	DefaultEtcdHostsConfig []string    = []string{"http://127.0.0.1:4001"}
+	DefaultEtcdConfig      *EtcdConfig = &EtcdConfig{}
+	DefaultHealthQuery     string      = "id.server."
+	Flags                  []cli.Flag  = []cli.Flag{&cli.StringFlag{Name: "log-level", Aliases: []string{"l"}, Usage: "logging level (debug, info, error)", Value: "info"},
+		&cli.StringFlag{Name: "config", Aliases: []string{"c"}, EnvVars: []string{"DNS_CONFIG"}, Usage: "path to application configuration file", Value: "dns.yaml"}}
+	Commands []*cli.Command = []*cli.Command{&cli.Command{Name: "config", Aliases: []string{"c"}, Usage: "Configuration Tools", Subcommands: []*cli.Command{&cli.Command{Name: "show-default", Aliases: []string{"sd"}, Usage: "Show default configuration", Action: ConfigShowDefaultAction},
+		&cli.Command{Name: "show", Aliases: []string{"s"}, Usage: "Show default configuration", Action: ConfigShowAction}}}}
+)
+var (
+	NewYamlEncoder = yaml.NewEncoder
+)
+var (
+	New    = errors.New
+	Errorf = errors.Errorf
+	Wrap   = errors.Wrap
+	Wrapf  = errors.Wrapf
+	Cause  = errors.Cause
 )
 
-func NewClient() (client *etcd.Client) {
-	client = etcd.NewClient(DefaultEtcdHosts)
+func Fatal(err error) {
+	fmt.Fprintf(os.Stderr, "fatal error: %s\n", err)
+	os.Exit(1)
+}
+
+type Config struct {
+	Listen string
+	Etcd   *EtcdConfig
+}
+
+func (c *Config) SetDefaults() {
+	if "" == c.Listen {
+		c.Listen = DefaultListen
+	}
+	if nil == c.Etcd {
+		c.Etcd = DefaultEtcdConfig
+	}
+	c.Etcd.SetDefaults()
+}
+
+type EtcdConfig struct {
+	Hosts []string
+}
+
+func (c *EtcdConfig) SetDefaults() {
+	if (nil == c.Hosts) || (0 == len(c.Hosts)) {
+		c.Hosts = DefaultEtcdHostsConfig
+	}
+}
+func LoadConfig(path string) (c *Config, err error) {
+	c = &Config{}
+	err = ParseConfig(c, path)
+	c.SetDefaults()
+	return
+}
+func ParseConfig(ptr *Config, path string) error {
+	fd, err := os.Open(path)
+	if nil != err {
+		return err
+	}
+	defer fd.Close()
+	_, err = revip.Unmarshal(ptr, revip.FromReader(fd, revip.YamlUnmarshaler), revip.FromEnviron("dns"))
+	return err
+}
+func ConfigShowDefaultAction(ctx *cli.Context) error {
+	enc := NewYamlEncoder(os.Stdout)
+	defer enc.Close()
+	DefaultConfig.SetDefaults()
+	return enc.Encode(DefaultConfig)
+}
+func ConfigShowAction(ctx *cli.Context) error {
+	c, err := LoadConfig(ctx.String("config"))
+	if nil != err {
+		return err
+	}
+	enc := NewYamlEncoder(os.Stdout)
+	defer enc.Close()
+	return enc.Encode(c)
+}
+func RootAction(ctx *cli.Context) error {
+	c, err := LoadConfig(ctx.String("config"))
+	if nil != err {
+		return err
+	}
+	return NewServer(NewClient(c.Etcd.Hosts), c.Listen).Run()
+}
+func NewApp() *cli.App {
+	app := &cli.App{}
+	app.Name = "dns"
+	app.Flags = Flags
+	app.Action = RootAction
+	app.Commands = Commands
+	return app
+}
+func NewClient(etcdHosts []string) (client *etcd.Client) {
+	client = etcd.NewClient(etcdHosts)
 	client.SyncCluster()
 	return client
 }
@@ -38,9 +130,6 @@ type Server struct {
 }
 
 func NewServer(client *etcd.Client, addr string) (server *Server) {
-	if addr == "" {
-		addr = DefaultAddr
-	}
 	return &Server{client: client, addr: addr, group: new(sync.WaitGroup), router: NewRouter(), stop: make(chan bool)}
 }
 func (s *Server) Run() error {
@@ -143,7 +232,7 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 func (s *Server) HealthCheck() {
 	c, m := new(dns.Client), new(dns.Msg)
 	c.Net, m.Question = "tcp", make([]dns.Question, 1)
-	m.Question[0] = dns.Question(DefaultHealthQuery(dns.TypeTXT, dns.ClassCHAOS))
+	m.Question[0] = dns.Question{DefaultHealthQuery, dns.TypeTXT, dns.ClassCHAOS}
 	for _, serv := range s.router.Servers() {
 		if (!check(c, m, serv)) || (!check(c, m, serv)) {
 			log.Printf("healthcheck failed for %s", serv)
@@ -156,7 +245,7 @@ func (s *Server) run(mux *dns.ServeMux, net string) {
 	server := &dns.Server{Addr: s.addr, Net: net, Handler: mux, ReadTimeout: s.readTimeout, WriteTimeout: s.writeTimeout}
 	err := server.ListenAndServe()
 	if err != nil {
-		log.Fatal(err)
+		Fatal(err)
 	}
 }
 
@@ -258,18 +347,14 @@ func (r *Router) Servers() []string {
 func check(c *dns.Client, m *dns.Msg, addr string) bool {
 	m.Id = dns.Id()
 	in, _, err := c.Exchange(m, addr)
-	if nil != err {
-		return false
-	}
-	if in.Rcode != dns.RcodeSuccess {
+	if (nil != err) || (in.Rcode != dns.RcodeSuccess) {
 		return false
 	}
 	return true
 }
 func main() {
-	s := NewServer(NewClient(), DefaultAddr)
-	err := s.Run()
-	if err != nil {
-		log.Fatal(err)
+	err := NewApp().Run(os.Args)
+	if nil != err {
+		Fatal(err)
 	}
 }

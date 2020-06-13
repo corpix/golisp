@@ -140,14 +140,15 @@
              (list ast ...))
        (string-append
         +lcbracket+
-        (string-join (map emit-item ast) +scomma+) +rcbracket+))
+        (string-join (map emit-item ast) (string-append +comma+ +new-line+))
+        +rcbracket+))
 
       ((list (or (quote slice)
                  (quote array))
              (list ast ...))
        (string-append
         +lcbracket+
-        (string-join (map emit-item ast) +scomma+)
+        (string-join (map emit-item ast) (string-append +comma+ +new-line+))
         +rcbracket+))
 
       ((list _ (list ast ...))
@@ -276,6 +277,21 @@
                                        +rcbracket+)
                         +empty+)))))
 
+(define (emit-bind ast)
+  (match ast
+    ((go:bind namespace syms)
+     (string-append "var" +space+ +lbracket+ +new-line+ +tab+
+                    (string-join
+                     (map (lambda (s)
+                            (let ((name (match s
+                                          ((cons sym orig) (cons sym orig))
+                                          (sym             (cons sym sym)))))
+                              (string-append (symbol->string (car name)) +space+ +eq+ +space+
+                                             (emit-expr namespace) +dot+ (symbol->string (cdr name)))))
+                          syms)
+                     (string-append +new-line+ +tab+)) +new-line+
+                    +rbracket+))))
+
 (define (emit-for ast)
   (match ast
     ((go:for vars seq pred iter kind body)
@@ -312,7 +328,10 @@
 (define (emit-switch ast)
   (match ast
     ((go:switch value cases)
-     (string-append "switch" +space+ (emit-expr value) +space+
+     (string-append "switch" +space+
+                    (if (not (null? value))
+                        (string-append (emit-expr value) +space+)
+                        +empty+)
                     +lcbracket+
                     (string-join (map emit-switch cases) +new-line+)
                     +rcbracket+))
@@ -465,6 +484,7 @@
     ((? go:const?    ast) (emit-var      ast))
     ((? go:go?       ast) (emit-go       ast))
     ((? go:if?       ast) (emit-if       ast))
+    ((? go:bind?     ast) (emit-bind     ast))
     ((? go:for?      ast) (emit-for      ast))
     ((? go:begin?    ast) (emit-begin    ast))
     ((? go:switch?   ast) (emit-switch   ast))
@@ -491,7 +511,7 @@
     ((? go:deref?    ast) (emit-deref    ast))
 
     ((go:func:call func arguments)
-     (string-append (emit-func func)
+     (string-append (emit-expr func)
                     +lbracket+
                     (string-join (map emit-expr arguments) +scomma+)
                     +rbracket+))
@@ -750,13 +770,13 @@
                              (go:create (go:type:id 'slice (go:type:id:slice (go:type:id 'X #f)))
 					(list (go:expr 1) (go:expr 2)
 					      (go:expr 3) (go:expr 4))))
-                            "[]X{1, 2, 3, 4}")
+                            "[]X{1,\n2,\n3,\n4}")
                            (check-equal?
                             (emit-create
                              (go:create (go:type:id 'array (go:type:id:array (go:type:id 'X #f) 4))
                                         (list (go:expr 1) (go:expr 2)
                                               (go:expr 3) (go:expr 4))))
-                            "[4]X{1, 2, 3, 4}")
+                            "[4]X{1,\n2,\n3,\n4}")
                            (check-equal?
                             (emit-create (go:create (go:ref (go:type:id 'X #f)) (go:expr 'nil)))
                             "&X(nil)")
@@ -773,7 +793,7 @@
                                               (cons "2" (go:expr 2))
                                               (cons "3" (go:expr 3))
                                               (cons "4" (go:expr 4)))))
-                            "map[string]int{\"1\": 1, \"2\": 2, \"3\": 3, \"4\": 4}")
+                            "map[string]int{\"1\": 1,\n\"2\": 2,\n\"3\": 3,\n\"4\": 4}")
                            (check-equal?
                             (emit-create
                              (go:create (go:type:id
@@ -784,7 +804,7 @@
                                               (cons 2 (go:expr "2"))
                                               (cons 3 (go:expr "3"))
                                               (cons 4 (go:expr "4")))))
-                            "map[int]string{1: \"1\", 2: \"2\", 3: \"3\", 4: \"4\"}")
+                            "map[int]string{1: \"1\",\n2: \"2\",\n3: \"3\",\n4: \"4\"}")
                            (check-equal?
                             (emit-create
                              (go:create (go:type:id 'struct
@@ -831,7 +851,7 @@
                                     (cons "4" (go:expr (go:create
                                                         (go:type:id 'struct (go:type:id:struct (list (go:type:id:struct:field 'x (go:type:id 'int #f) #f))))
                                                         (list (cons 'x (go:expr 4)))))))))
-                            "map[string]struct{\n\tx int\n}{\"1\": struct{\n\tx int\n}{x: 1}, \"2\": struct{\n\tx int\n}{x: 2}, \"3\": struct{\n\tx int\n}{x: 3}, \"4\": struct{\n\tx int\n}{x: 4}}"))
+                            "map[string]struct{\n\tx int\n}{\"1\": struct{\n\tx int\n}{x: 1},\n\"2\": struct{\n\tx int\n}{x: 2},\n\"3\": struct{\n\tx int\n}{x: 3},\n\"4\": struct{\n\tx int\n}{x: 4}}"))
 
                (test-suite "def"
                            (check-equal?
@@ -1088,6 +1108,14 @@
                                       #f))
                             "if (!true) {\n\tfmt.Println(1)\nfmt.Println(2)\n}"))
 
+               (test-suite "bind"
+                           (check-equal?
+                            (emit-bind (go:bind (go:expr 'errors) (list 'New 'Errorf)))
+                            "var (\n\tNew = errors.New\n\tErrorf = errors.Errorf\n)")
+                           (check-equal?
+                            (emit-bind (go:bind 'errors (list 'New (cons 'e 'Errorf))))
+                            "var (\n\tNew = errors.New\n\te = errors.Errorf\n)"))
+
                (test-suite "for"
                            (check-equal?
                             (emit-for (go:for
@@ -1103,7 +1131,7 @@
                                                (list (go:expr 1) (go:expr 2) (go:expr 3)))))
                                        #f #f #f
                                        (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))
-                            "for k, v := []int{1, 2, 3} {\n\tfmt.Println(k, v)\n}")
+                            "for k, v := []int{1,\n2,\n3} {\n\tfmt.Println(k, v)\n}")
                            (check-equal?
                             (emit-for (go:for
                                        (list 'k 'v)
@@ -1113,7 +1141,7 @@
                                                (list (go:expr 1) (go:expr 2) (go:expr 3)))))
                                        #f #f 'range
                                        (list (go:expr (go:func:call 'fmt.Println (list (go:expr 'k) (go:expr 'v)))))))
-                            "for k, v := range []int{1, 2, 3} {\n\tfmt.Println(k, v)\n}")
+                            "for k, v := range []int{1,\n2,\n3} {\n\tfmt.Println(k, v)\n}")
                            (check-equal?
                             (emit-for (go:for
                                        (list 'k)
@@ -1145,6 +1173,19 @@
                                                'default
                                                (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default")))))))))
                             "switch 1 {case 1:\n\tfmt.Println(\"one\")\ncase 2:\n\tfmt.Println(\"two\")\ndefault:\n\tfmt.Println(\"default\")}")
+                           (check-equal?
+                            (emit-switch
+                             (go:switch null
+                                        (list (go:case
+                                               (go:expr 1)
+                                               (list (go:expr (go:func:call 'fmt.Println (list (go:expr "one"))))))
+                                              (go:case
+                                               (go:expr 2)
+                                               (list (go:expr (go:func:call 'fmt.Println (list (go:expr "two"))))))
+                                              (go:case
+                                               'default
+                                               (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default")))))))))
+                            "switch {case 1:\n\tfmt.Println(\"one\")\ncase 2:\n\tfmt.Println(\"two\")\ndefault:\n\tfmt.Println(\"default\")}")
                            (check-equal?
                             (emit-switch
                              (go:switch (go:expr (go:operator '+ (list (go:expr 1) (go:expr 1))))
