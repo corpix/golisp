@@ -43,7 +43,7 @@
                     (DefaultListen           string          "0.0.0.0:5353")
                     (DefaultEtcdHostsConfig (slice string)   (create (slice string) ("http://127.0.0.1:4001")))
                     (DefaultEtcdConfig      (ptr EtcdConfig) (create (ref EtcdConfig)))
-                    (DefaultHealthQuery      string          "id.server.")
+                    ;;(DefaultHealthQuery      string          "id.server.")
 
                     (Flags (slice cli.Flag)
                            (create (slice cli.Flag)
@@ -80,6 +80,9 @@
 
                (bind yaml ((NewYamlEncoder NewEncoder)))
                (bind errors (New Errorf Wrap Wrapf Cause))
+               (bind regexp
+                     (Regex)
+                     (prefix Regexp (Match Compile)))
 
                (func (Fatal ((err error)))
                      (fmt.Fprintf os.Stderr "fatal error: %s\n" err)
@@ -87,14 +90,13 @@
 
                ;;
 
-               (type (Config (struct
-                               (Listen string)
-                               (Etcd (ptr EtcdConfig)))))
+               (type (SourceConfig (struct
+                                     (Type string)
+                                     (Etcd EtcdConfig)
+                                     (File (struct (Path string)))
+                                     (Static (map string string)))))
 
-               (func ((SetDefaults (c (ptr Config))))
-                     (when (== ""  c.Listen) (set c.Listen DefaultListen))
-                     (when (== nil c.Etcd)   (set c.Etcd   DefaultEtcdConfig))
-                     (c.Etcd.SetDefaults))
+               ;;--
 
                (type (EtcdConfig (struct (Hosts (slice string)))))
 
@@ -102,6 +104,35 @@
                      (when (or (== nil c.Hosts)
                                (== 0 (len c.Hosts)))
                        (set c.Hosts DefaultEtcdHostsConfig)))
+
+               ;;--
+
+               (type (Config (struct
+                               (Listen   string)
+                               (Sources (map string (ptr SourceConfig)))
+                               (Routes  (slice string))
+                               (Rewrite (slice string)))))
+
+               (type (Provider (interface
+                                 (Current (func))
+                                 (Next (func)))))
+
+               ;; (type (Cond (struct
+               ;;               (Pred (ptr Regexp))
+               ;;               (Value string))))
+
+               ;; (type (Parser (interface
+               ;;                   (Parse (func ((xs (slice string))) error)))))
+
+               ;; (type (Source (struct
+               ;;                 (Client Provider)
+               ;;                 (Parser Parser))))
+
+
+               (func ((SetDefaults (c (ptr Config))))
+                     (when (== ""  c.Listen) (set c.Listen DefaultListen))
+                     (when (== nil c.Etcd)   (set c.Etcd   DefaultEtcdConfig))
+                     (c.Etcd.SetDefaults))
 
                (func (LoadConfig ((path string)) ((c (ptr Config)) (err error)))
                      (set c (create (ref Config)))
@@ -118,6 +149,8 @@
                                             (revip.FromReader fd revip.YamlUnmarshaler)
                                             (revip.FromEnviron "dns"))))
                      (return err))
+
+               ;;
 
                (func (ConfigShowDefaultAction ((ctx (ptr cli.Context))) (error))
                      (def enc (NewYamlEncoder os.Stdout))
@@ -137,6 +170,8 @@
                      (when (!= nil err) (return err))
                      (return ((key (NewServer (NewClient c.Etcd.Hosts) c.Listen)
                                    Run))))
+
+               ;;
 
                (func (NewApp () ((ptr cli.App)))
                      (def app (create (ref cli.App)))
@@ -181,13 +216,6 @@
                      (go (s.run mux "tcp"))
                      (go (s.run mux "udp"))
 
-                     ;; Healthchecking.
-                     (begin
-                       (log.Printf "enabling health checking")
-                       (go ((func () (for ()
-                                       (time.Sleep (* 5 1e9))
-                                       (s.HealthCheck))))))
-
                      ;; Set a Watch and check for changes.
                      (begin
                        (log.Printf "setting watch")
@@ -199,7 +227,7 @@
                      (begin
                        (log.Printf "getting initial list")
                        (def (n err) ((s.client.Get "/dnsrouter/" #f #t)))
-                       (when (!= err nil) (s.Update n))
+                       (when (== nil err) (s.Update n))
                        (log.Printf "ready for queries"))
                      (s.group.Wait)
                      (return nil))
@@ -260,18 +288,18 @@
 
                      (w.WriteMsg ret))
 
-               (func ((HealthCheck (s (ptr Server))))
-                     (def (c m) ((new dns.Client)
-                                 (new dns.Msg)))
-                     (set (c.Net m.Question)
-                          ("tcp" (make (type (slice dns.Question)) 1)))
-                     (set (index m.Question 0)
-                          (create dns.Question (DefaultHealthQuery dns.TypeTXT dns.ClassCHAOS)))
-                     (for ((_ serv) (range (s.router.Servers)))
-                       (when (or (not (check c m serv))
-                                 (not (check c m serv)))
-                         (log.Printf "healthcheck failed for %s" serv)
-                         (s.router.RemoveServer serv))))
+               ;; (func ((HealthCheck (s (ptr Server))))
+               ;;       (def (c m) ((new dns.Client)
+               ;;                   (new dns.Msg)))
+               ;;       (set (c.Net m.Question)
+               ;;            ("tcp" (make (type (slice dns.Question)) 1)))
+               ;;       (set (index m.Question 0)
+               ;;            (create dns.Question (DefaultHealthQuery dns.TypeTXT dns.ClassCHAOS)))
+               ;;       (for ((_ serv) (range (s.router.Servers)))
+               ;;         (when (or (not (check c m serv))
+               ;;                   (not (check c m serv)))
+               ;;           (log.Printf "healthcheck failed for %s" serv)
+               ;;           (s.router.RemoveServer serv))))
 
                (func ((run (s (ptr Server))) ((mux (ptr dns.ServeMux)) (net  string)))
                      (defer (s.group.Done))
@@ -282,6 +310,8 @@
                                                (ReadTimeout s.readTimeout)
                                                (WriteTimeout s.writeTimeout)))))
                      (def err (server.ListenAndServe))
+                     ;; we could use (server.ShutdownContext ctx) here
+                     ;; but sould define some settings
                      (when (!= err nil) (Fatal err)))
 
                ;;
@@ -304,7 +334,7 @@
                             (when (!= nil err) (return err))
                             (when (== nil (net.ParseIP ip))
                               (return (fmt.Errorf "not an IP address %s" dest))))
-                     (begin (def (_ err) ((regexp.Compile re)))
+                     (begin (def (_ err) ((RegexpCompile re)))
                             (when (!= nil err) (return err))
                             (def (_ ok) ((index r.route re)))
                             (unless ok (set (index r.route re)
@@ -322,7 +352,7 @@
                       ((dest string) (re string)) (error))
                      (r.Lock)
                      (defer (r.Unlock))
-                     (begin (def (_ err) ((regexp.Compile re)))
+                     (begin (def (_ err) ((RegexpCompile re)))
                             (when (!= nil err) (return err))
                             (def (_ ok) ((index r.route re)))
                             (unless ok (return (fmt.Errorf "Regexp %s does not exist" re)))
@@ -348,7 +378,7 @@
                      (defer (r.RUnlock))
                      (for ((re dest) (range r.route))
                        (def (ok _)
-                         ((regexp.Match re (cast qname (slice byte)))))
+                         ((RegexpMatch re (cast qname (slice byte)))))
                        (when ok (return dest nil)))
                      (return nil (fmt.Errorf "No match for %s" qname)))
 

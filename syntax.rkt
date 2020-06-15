@@ -11,6 +11,7 @@
          "tool.rkt"
          (for-syntax racket/base
                      racket/list
+                     racket/match
                      racket/syntax
                      syntax/parse
                      "type.rkt"
@@ -208,8 +209,8 @@
     #:description "func type description"
     #:attributes (id kind ast)
     #:datum-literals (func)
-    (pattern (func ((~optional i:FuncIO #:defaults ((i (syntax null))))
-                    (~optional o:FuncIO #:defaults ((o (syntax null))))))
+    (pattern (func (~optional i:FuncIO #:defaults ((i (syntax null))))
+                   (~optional o:FuncIO #:defaults ((o (syntax null)))))
              #:attr id   (quote func)
              #:attr kind (quote primitive)
              #:attr ast  (go:type:id:func
@@ -369,6 +370,10 @@
                                  (and (syntax->datum (syntax name)) (*->symbol (syntax name)))
                                  (or (attribute i.ast) null)
                                  (or (attribute o.ast) null)
+                                 (attribute body.ast)))
+    (pattern (func body:ExprRecur ...)
+             #:attr ast (go:func (cons #f #f) #f
+                                 null null
                                  (attribute body.ast))))
 
   (define-syntax-class FuncCall
@@ -452,13 +457,39 @@
              #:attr ast (cons (attribute sym)
                               (attribute orig))))
 
+  (define-syntax-class BindMaps
+    #:description "bind statement mappings"
+    #:attributes (ast)
+    #:datum-literals (prefix)
+    (pattern (prefix name:id (xs:BindMap ...))
+             #:attr ast (let ((prefix  (attribute name)))
+                          (map
+                           (lambda (ast)
+                             (match ast
+                               ((cons sym orig)
+                                (cons (string->symbol
+                                       (string-append (symbol->string (syntax->datum prefix))
+                                                      (symbol->string (syntax->datum sym))))
+                                      orig))
+                               (sym (cons (string->symbol
+                                           (string-append (symbol->string (syntax->datum prefix))
+                                                          (symbol->string (syntax->datum sym))))
+                                          sym))))
+                           (attribute xs.ast))))
+    (pattern (xs:BindMap ...)
+             #:attr ast (attribute xs.ast)))
+
   (define-syntax-class Bind
     #:description "bind statement map's keys from specified namespace to current"
     #:attributes (ast)
-    #:datum-literals (bind)
-    (pattern (bind namespace:id (map:BindMap ...))
+    #:datum-literals (bind prefix)
+    (pattern (bind namespace:id xs:BindMaps ...)
+             #:attr ast (go:bind
+                         (attribute namespace)
+                         (apply append (attribute xs.ast))))
+    (pattern (bind namespace:id xs:BindMaps ...)
              #:attr ast (go:bind (attribute namespace)
-                                 (attribute map.ast))))
+                                 (apply append (attribute xs.ast)))))
 
   ;;
 
@@ -958,13 +989,13 @@
                                                                                                 #f)
                                                                        (go:type:id:struct:field 'y (go:type:id 'X #f) #f))))))))
                            (check-equal?
-                            (go/expand (type (interface io.Reader (x (func ())))))
+                            (go/expand (type (interface io.Reader (x (func)))))
                             (list (go:expr (go:type #f (go:type:id 'interface
                                                                 (go:type:id:interface
                                                                  (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f))
                                                                        (go:type:id:interface:field 'x (go:type:id 'func (go:type:id:func null null))))))))))
                            (check-equal?
-                            (go/expand (type (interface io.Reader (x (func (() ()))))))
+                            (go/expand (type (interface io.Reader (x (func () ())))))
                             (list (go:expr (go:type #f (go:type:id 'interface
                                                                 (go:type:id:interface
                                                                  (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f))
@@ -973,7 +1004,7 @@
                             (go/expand
                              (type
                               (interface io.Reader
-                                (x (func (((k int) (v (map int string))) (error))))
+                                (x (func ((k int) (v (map int string))) (error)))
                                 (y (struct
                                      (x (interface))
                                      (y (map bool (struct))))))))
@@ -1021,7 +1052,7 @@
                             (list (go:expr (go:type #f (go:type:id 'chan  (go:type:id:chan #f  (go:type:id 'struct (go:type:id:struct null))))))))
 
                            (check-equal?
-                            (go/expand (type (func (((k string) (v int)) (int error)))))
+                            (go/expand (type (func ((k string) (v int)) (int error))))
                             (list (go:expr
                                    (go:type
                                     #f
@@ -1033,7 +1064,7 @@
                                       (list (go:type:id 'int   #f)
                                             (go:type:id 'error #f))))))))
                            (check-equal?
-                            (go/expand (type (func ((string int) (int error)))))
+                            (go/expand (type (func (string int) (int error))))
                             (list (go:expr
                                    (go:type
                                     #f
@@ -1151,7 +1182,7 @@
                             (list (go:expr (go:def (list (go:expr 'x) (go:expr 'y))
                                                    (list (go:expr 1) (go:expr 2))))))
                            (check-equal?
-                            (go/expand (def x (func ())))
+                            (go/expand (def x (func)))
                             (list (go:expr (go:def (list (go:expr 'x))
                                                    (list (go:expr (go:func (cons #f #f) #f null null null)))))))
                            (check-equal?
@@ -1225,6 +1256,9 @@
                                              (go:import 'bar #f)))))))
 
                (test-suite "func"
+                           (check-equal?
+                            (go/expand (func))
+                            (list (go:expr (go:func (cons #f #f) #f null null null))))
                            (check-equal?
                             (go/expand (func ()))
                             (list (go:expr (go:func (cons #f #f) #f null null null))))
@@ -1425,7 +1459,15 @@
                             (list (go:expr (go:bind 'errors (list 'New 'Errorf)))))
                            (check-equal?
                             (go/expand (bind errors (New (e Errorf))))
-                            (list (go:expr (go:bind 'errors (list 'New (cons 'e 'Errorf)))))))
+                            (list (go:expr (go:bind 'errors (list 'New (cons 'e 'Errorf))))))
+                           (check-equal?
+                            (go/expand (bind errors (prefix New (New Error))))
+                            (go/expand (bind errors ((NewNew New) (NewError Error)))))
+                           (check-equal?
+                            (go/expand (bind xxx (Foo Bar) (prefix yyy (Baz Qux))))
+                            (list (go:expr (go:bind 'xxx (list 'Foo 'Bar
+                                                               (cons 'yyyBaz 'Baz)
+                                                               (cons 'yyyQux 'Qux)))))))
 
                (test-suite "for"
                            (check-equal?

@@ -22,7 +22,6 @@ var (
 	DefaultListen          string      = "0.0.0.0:5353"
 	DefaultEtcdHostsConfig []string    = []string{"http://127.0.0.1:4001"}
 	DefaultEtcdConfig      *EtcdConfig = &EtcdConfig{}
-	DefaultHealthQuery     string      = "id.server."
 	Flags                  []cli.Flag  = []cli.Flag{&cli.StringFlag{Name: "log-level", Aliases: []string{"l"}, Usage: "logging level (debug, info, error)", Value: "info"},
 		&cli.StringFlag{Name: "config", Aliases: []string{"c"}, EnvVars: []string{"DNS_CONFIG"}, Usage: "path to application configuration file", Value: "dns.yaml"}}
 	Commands []*cli.Command = []*cli.Command{&cli.Command{Name: "config", Aliases: []string{"c"}, Usage: "Configuration Tools", Subcommands: []*cli.Command{&cli.Command{Name: "show-default", Aliases: []string{"sd"}, Usage: "Show default configuration", Action: ConfigShowDefaultAction},
@@ -38,15 +37,44 @@ var (
 	Wrapf  = errors.Wrapf
 	Cause  = errors.Cause
 )
+var (
+	Regex         = regexp.Regex
+	RegexpMatch   = regexp.Match
+	RegexpCompile = regexp.Compile
+)
 
 func Fatal(err error) {
 	fmt.Fprintf(os.Stderr, "fatal error: %s\n", err)
 	os.Exit(1)
 }
 
+type SourceConfig struct {
+	Type string
+	Etcd EtcdConfig
+	File struct {
+		Path string
+	}
+	Static map[string]string
+}
+type EtcdConfig struct {
+	Hosts []string
+}
+
+func (c *EtcdConfig) SetDefaults() {
+	if (nil == c.Hosts) || (0 == len(c.Hosts)) {
+		c.Hosts = DefaultEtcdHostsConfig
+	}
+}
+
 type Config struct {
-	Listen string
-	Etcd   *EtcdConfig
+	Listen  string
+	Sources map[string]*SourceConfig
+	Routes  []string
+	Rewrite []string
+}
+type Provider interface {
+	Currentfunc()
+	Nextfunc()
 }
 
 func (c *Config) SetDefaults() {
@@ -57,16 +85,6 @@ func (c *Config) SetDefaults() {
 		c.Etcd = DefaultEtcdConfig
 	}
 	c.Etcd.SetDefaults()
-}
-
-type EtcdConfig struct {
-	Hosts []string
-}
-
-func (c *EtcdConfig) SetDefaults() {
-	if (nil == c.Hosts) || (0 == len(c.Hosts)) {
-		c.Hosts = DefaultEtcdHostsConfig
-	}
 }
 func LoadConfig(path string) (c *Config, err error) {
 	c = &Config{}
@@ -139,15 +157,6 @@ func (s *Server) Run() error {
 	go s.run(mux, "tcp")
 	go s.run(mux, "udp")
 	{
-		log.Printf("enabling health checking")
-		go func() {
-			for {
-				time.Sleep((5 * 1000000000.0))
-				s.HealthCheck()
-			}
-		}()
-	}
-	{
 		log.Printf("setting watch")
 		ch := make(chan *etcd.Response)
 		go func() {
@@ -163,7 +172,7 @@ func (s *Server) Run() error {
 	{
 		log.Printf("getting initial list")
 		n, err := s.client.Get("/dnsrouter/", false, true)
-		if err != nil {
+		if nil == err {
 			s.Update(n)
 		}
 		log.Printf("ready for queries")
@@ -229,17 +238,6 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	}
 	w.WriteMsg(ret)
 }
-func (s *Server) HealthCheck() {
-	c, m := new(dns.Client), new(dns.Msg)
-	c.Net, m.Question = "tcp", make([]dns.Question, 1)
-	m.Question[0] = dns.Question{DefaultHealthQuery, dns.TypeTXT, dns.ClassCHAOS}
-	for _, serv := range s.router.Servers() {
-		if (!check(c, m, serv)) || (!check(c, m, serv)) {
-			log.Printf("healthcheck failed for %s", serv)
-			s.router.RemoveServer(serv)
-		}
-	}
-}
 func (s *Server) run(mux *dns.ServeMux, net string) {
 	defer s.group.Done()
 	server := &dns.Server{Addr: s.addr, Net: net, Handler: mux, ReadTimeout: s.readTimeout, WriteTimeout: s.writeTimeout}
@@ -271,7 +269,7 @@ func (r *Router) Add(dest string, re string) error {
 		}
 	}
 	{
-		_, err := regexp.Compile(re)
+		_, err := RegexpCompile(re)
 		if nil != err {
 			return err
 		}
@@ -294,7 +292,7 @@ func (r *Router) Remove(dest string, re string) error {
 	r.Lock()
 	defer r.Unlock()
 	{
-		_, err := regexp.Compile(re)
+		_, err := RegexpCompile(re)
 		if nil != err {
 			return err
 		}
@@ -328,7 +326,7 @@ func (r *Router) Match(qname string) ([]string, error) {
 	r.RLock()
 	defer r.RUnlock()
 	for re, dest := range r.route {
-		ok, _ := regexp.Match(re, []byte(qname))
+		ok, _ := RegexpMatch(re, []byte(qname))
 		if ok {
 			return dest, nil
 		}
