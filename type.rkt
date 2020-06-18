@@ -36,7 +36,7 @@
 (struct go:go          (func)                #:prefab)
 (struct go:if          (condition then else) #:prefab)
 
-(struct go:bind        (namespace syms) #:prefab)
+(struct go:alias       (namespace syms) #:prefab)
 
 (struct go:for         (vars seq pred iter kind body) #:prefab)
 (struct go:begin       (exprs) #:prefab)

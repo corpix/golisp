@@ -138,7 +138,8 @@
              (list ast ...))
        (string-append
         +lcbracket+
-        (string-join (map emit-item ast) (string-append +comma+ +new-line+))
+        (string-join (map emit-item ast)
+                     (string-append +comma+ +new-line+))
         +rcbracket+))
 
       ((list (or (quote slice)
@@ -146,13 +147,15 @@
              (list ast ...))
        (string-append
         +lcbracket+
-        (string-join (map emit-item ast) (string-append +comma+ +new-line+))
+        (string-join (map emit-item ast)
+                     (string-append +comma+ +new-line+))
         +rcbracket+))
 
       ((list _ (list ast ...))
        (string-append
         +lcbracket+
-        (string-join (map emit-item ast) +scomma+)
+        (string-join (map emit-item ast)
+                     (string-append +comma+ +new-line+))
         +rcbracket+))
       ((list _ ast)
        (string-append +lbracket+ (emit-item ast) +rbracket+)))))
@@ -278,9 +281,9 @@
                                        +rcbracket+)
                         +empty+)))))
 
-(define (emit-bind ast)
+(define (emit-alias ast)
   (match ast
-    ((go:bind namespace syms)
+    ((go:alias namespace syms)
      (string-append "var" +space+ +lbracket+ +new-line+ +tab+
                     (string-join
                      (map (lambda (s)
@@ -485,7 +488,7 @@
     ((? go:const?    ast) (emit-var      ast))
     ((? go:go?       ast) (emit-go       ast))
     ((? go:if?       ast) (emit-if       ast))
-    ((? go:bind?     ast) (emit-bind     ast))
+    ((? go:alias?     ast) (emit-alias     ast))
     ((? go:for?      ast) (emit-for      ast))
     ((? go:begin?    ast) (emit-begin    ast))
     ((? go:switch?   ast) (emit-switch   ast))
@@ -1111,17 +1114,17 @@
                                       #f))
                             "if (!true) {\n\tfmt.Println(1)\nfmt.Println(2)\n}"))
 
-               (test-suite "bind"
+               (test-suite "alias"
                            (check-equal?
-                            (emit-bind (go:bind (go:expr 'errors) (list 'New 'Errorf)))
+                            (emit-alias (go:alias (go:expr 'errors) (list 'New 'Errorf)))
                             "var (\n\tNew = errors.New\n\tErrorf = errors.Errorf\n)")
                            (check-equal?
-                            (emit-bind (go:bind 'errors (list 'New (cons 'e 'Errorf))))
+                            (emit-alias (go:alias 'errors (list 'New (cons 'e 'Errorf))))
                             "var (\n\tNew = errors.New\n\te = errors.Errorf\n)")
                            (check-equal?
-                            (emit-bind (go:bind 'xxx (list 'Foo 'Bar
-                                                           (cons 'yyyBaz 'Baz)
-                                                           (cons 'yyyQux 'Qux))))
+                            (emit-alias (go:alias 'xxx (list 'Foo 'Bar
+                                                             (cons 'yyyBaz 'Baz)
+                                                             (cons 'yyyQux 'Qux))))
                             "var (\n\tFoo = xxx.Foo\n\tBar = xxx.Bar\n\tyyyBaz = xxx.Baz\n\tyyyQux = xxx.Qux\n)"))
 
                (test-suite "for"
@@ -1415,7 +1418,7 @@
                                                                                       (list (go:expr 'RootAction))))
                                                                      (go:expr (go:func:call 'app.Run
                                                                                             (list (go:expr 'os.Args)))))))))
-                              "package main\nimport (\n\t\"os\"\n\t\"fmt\"\n\tcli \"github.com/urfave/cli/v2\"\n)\nvar (\n\tFlags []cli.Flag = []cli.Flag{cli.BoolFlag{Name: \"test\", Usage: \"test flag\"}}\n)\nfunc RootAction (ctx *cli.Context) (error) {\n\tfmt.Println(\"hello from root, test is\", ctx.Bool(\"test\"))\n}\nfunc main () () {\n\tapp := *cli.App{}\n\tapp.Flags = Flags\n\tapp.Action = RootAction\n\tapp.Run(os.Args)\n}"))))))
+                              "package main\nimport (\n\t\"os\"\n\t\"fmt\"\n\tcli \"github.com/urfave/cli/v2\"\n)\nvar (\n\tFlags []cli.Flag = []cli.Flag{cli.BoolFlag{Name: \"test\",\nUsage: \"test flag\"}}\n)\nfunc RootAction (ctx *cli.Context) (error) {\n\tfmt.Println(\"hello from root, test is\", ctx.Bool(\"test\"))\n}\nfunc main () () {\n\tapp := *cli.App{}\n\tapp.Flags = Flags\n\tapp.Action = RootAction\n\tapp.Run(os.Args)\n}"))))))
     (displayln (format "test suite ~s" (rackunit-test-suite-name suite)))
     (display "\t")
     (run-tests suite 'verbose)))

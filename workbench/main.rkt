@@ -78,11 +78,11 @@
 
                ;;
 
-               (bind yaml ((NewYamlEncoder NewEncoder)))
-               (bind errors (New Errorf Wrap Wrapf Cause))
-               (bind regexp
-                     (Regex)
-                     (prefix Regexp (Match Compile)))
+               (alias yaml   ((NewYamlEncoder NewEncoder)))
+               (alias errors (suffix Error  (New Wrap Wrapf Cause)))
+               (alias regexp (prefix Regexp (Match Compile)))
+
+               ;;
 
                (func (Fatal ((err error)))
                      (fmt.Fprintf os.Stderr "fatal error: %s\n" err)
@@ -117,17 +117,16 @@
                                  (Current (func))
                                  (Next (func)))))
 
-               ;; (type (Cond (struct
-               ;;               (Pred (ptr Regexp))
-               ;;               (Value string))))
+               (type (Cond (struct
+                             (Pred (ptr Regexp))
+                             (Value string))))
 
-               ;; (type (Parser (interface
-               ;;                   (Parse (func ((xs (slice string))) error)))))
+               (type (Parser (interface
+                                 (Parse (func ((xs (slice string))) (error))))))
 
-               ;; (type (Source (struct
-               ;;                 (Client Provider)
-               ;;                 (Parser Parser))))
-
+               (type (Source (struct
+                               (Client Provider)
+                               (Parser Parser))))
 
                (func ((SetDefaults (c (ptr Config))))
                      (when (== ""  c.Listen) (set c.Listen DefaultListen))
