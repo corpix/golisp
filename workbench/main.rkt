@@ -3,29 +3,8 @@
          racket/string
          racket/match
          racket/list
-         racket/pretty
          syntax/parse
-         "../syntax.rkt"
-         "../emit.rkt"
-         (for-syntax racket/base
-                     syntax/parse
-                     "../syntax.rkt"))
-
-(provide #%app)
-
-(define-syntax-rule (go/string exprs ...)
-  (go/emit (let ((v (go/expand exprs ...)))
-             (begin0 v
-               ;;(pretty-print v)
-               ))))
-
-(define-syntax (go/write-file stx)
-  (syntax-parse stx
-    ((_ (~or* name:string name:id) exprs:expr ...)
-     (syntax (with-output-to-file #:exists (quote replace)
-               name
-               (lambda () (display (go/string exprs ...))))))))
-
+         "../main.rkt")
 
 (go/write-file "main.go"
                (package main)
@@ -39,11 +18,10 @@
                        github.com/corpix/revip
                        github.com/pkg/errors)
 
-               (var (DefaultConfig           Config          (create Config))
-                    (DefaultListen           string          "0.0.0.0:5353")
-                    (DefaultEtcdHostsConfig (slice string)   (create (slice string) ("http://127.0.0.1:4001")))
-                    (DefaultEtcdConfig      (ptr EtcdConfig) (create (ref EtcdConfig)))
-                    ;;(DefaultHealthQuery      string          "id.server.")
+               (var (DefaultConfig Config (create Config))
+                    (DefaultListen string "0.0.0.0:5353")
+                    (DefaultEtcdHostsConfig (slice string) (create (slice string) ("http://127.0.0.1:4001")))
+                    (DefaultEtcdConfig (ptr EtcdConfig) (create (ref EtcdConfig)))
 
                     (Flags (slice cli.Flag)
                            (create (slice cli.Flag)
