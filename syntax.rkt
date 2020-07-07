@@ -1,17 +1,18 @@
 #lang racket/base
-(require racket/bool
+(require (except-in racket/list flatten)
+         racket/bool
          racket/match
          racket/string
          racket/format
          racket/set
-         racket/list
          racket/syntax
 	 syntax/parse
          "macro.rkt"
          "tool.rkt"
-         (for-syntax racket/base
-                     racket/list
+         (for-syntax (except-in racket/list flatten)
+                     racket/base
                      racket/match
+                     racket/format
                      racket/syntax
                      syntax/parse
                      "type.rkt"
@@ -451,63 +452,98 @@
                                (go:begin (attribute then.ast))
                                #f)))
 
-  (define-syntax-class AliasMap
-    #:description "alias statement mapping"
-    #:attributes (ast)
-    (pattern key:id
-             #:attr ast (attribute key))
-    (pattern (sym:id orig:id)
-             #:attr ast (cons (attribute sym)
-                              (attribute orig))))
+  ;;
 
-  (define-syntax-class AliasMaps
-    #:description "alias statement mappings"
-    #:attributes (ast)
+  (define (alias-builder f xs)
+    (map (lambda (v) (f v)) xs))
+
+  (define (alias-rename-builder f xs)
+    (map (lambda (v)
+           (let ((r (f (car v))))
+             (cons (if (cons? r) (car r) r)
+                   (cdr v))))
+         xs))
+
+  (define-syntax-class AliasWrap
+    #:description "alias wrap expression (prefix sym xs ...) or (suffix sym xs ...)"
+    #:attributes (ast builder)
     #:datum-literals (prefix suffix)
-    (pattern (prefix name:id (xs:AliasMap ...))
-             #:attr ast (let ((prefix  (attribute name)))
-                          (map
-                           (lambda (ast)
-                             (match ast
-                               ((cons sym orig)
-                                (cons (string->symbol
-                                       (string-append (symbol->string (syntax->datum prefix))
-                                                      (symbol->string (syntax->datum sym))))
-                                      orig))
-                               (sym (cons (string->symbol
-                                           (string-append (symbol->string (syntax->datum prefix))
-                                                          (symbol->string (syntax->datum sym))))
-                                          sym))))
-                           (attribute xs.ast))))
-    (pattern (suffix name:id (xs:AliasMap ...))
-             #:attr ast (let ((suffix  (attribute name)))
-                          (map
-                           (lambda (ast)
-                             (match ast
-                               ((cons sym orig)
-                                (cons (string->symbol
-                                       (string-append (symbol->string (syntax->datum sym))
-                                                      (symbol->string (syntax->datum suffix))))
-                                      orig))
-                               (sym (cons (string->symbol
-                                           (string-append (symbol->string (syntax->datum sym))
-                                                          (symbol->string (syntax->datum suffix))))
-                                          sym))))
-                           (attribute xs.ast))))
-    (pattern (xs:AliasMap ...)
-             #:attr ast (attribute xs.ast)))
+    (pattern (prefix ~! sym:AliasSym xs:AliasSyms ...)
+             #:attr ast (map
+                         (lambda (vv builder)
+                           (builder (lambda (v) (cons (~a (car (attribute sym.ast)) v) v))
+                            vv))
+                         (attribute xs.ast)
+                         (attribute xs.builder))
+             #:attr builder alias-rename-builder)
+    (pattern (suffix ~! sym:AliasSym xs:AliasSyms ...)
+             #:attr ast (map
+                         (lambda (vv builder)
+                           (builder (lambda (v) (cons (~a v (car (attribute sym.ast))) v))
+                                    vv))
+                         (attribute xs.ast)
+                         (attribute xs.builder))
+             #:attr builder alias-rename-builder))
+
+  (define-syntax-class AliasRename
+    #:description "alias rename expression (rename (new old) ...)"
+    #:attributes (ast builder)
+    #:datum-literals (rename)
+    (pattern (rename ~! (new-name:AliasSym old-name:AliasSym) ...)
+             #:attr ast (map
+                         (lambda (new old) (cons new old))
+                         (flatten (attribute new-name.ast))
+                         (flatten (attribute old-name.ast)))
+             #:attr builder alias-rename-builder))
+
+  (define-syntax-class AliasConst
+    #:description "alias const expression (const xs ...)"
+    #:attributes (ast builder)
+    #:datum-literals (const)
+    (pattern (const ~! (~or* xs:AliasWrap xs:AliasRename xs:AliasSyms) ...)
+             #:attr ast (map
+                         (lambda (v) (go:alias:const v))
+                         (flatten (attribute xs.ast)))
+             #:attr builder (lambda (f xs)
+                              (map (lambda (v)
+                                     (go:alias:const (f (go:alias:const-sym v))))
+                                   xs))))
+
+  (define-syntax-class AliasType
+    #:description "alias type expression (type xs ...)"
+    #:attributes (ast builder)
+    #:datum-literals (type)
+    (pattern (type ~! (~or* xs:AliasWrap xs:AliasRename xs:AliasSyms) ...)
+             #:attr ast (map
+                         (lambda (v) (go:alias:type v))
+                         (flatten (attribute xs.ast)))
+             #:attr builder (lambda (f xs)
+                              (map (lambda (v)
+                                     (go:alias:type (f (go:alias:type-sym v))))
+                                   xs))))
+
+  (define-syntax-class AliasSym
+    #:description "alias symbolic name"
+    #:attributes (ast builder)
+    (pattern xs:id
+             #:attr ast (list (*->string (syntax->datum (attribute xs))))
+             #:attr builder alias-builder))
+
+  (define-syntax-class AliasSyms
+    #:description "list of alias symbolic names (foo bar baz ...)"
+    #:attributes (ast builder)
+    (pattern (~or* xs:AliasSym xs:AliasWrap xs:AliasRename xs:AliasConst xs:AliasType)
+             #:attr ast     (attribute xs.ast)
+             #:attr builder (attribute xs.builder)))
 
   (define-syntax-class Alias
-    #:description "alias statement map's keys from specified namespace to current"
+    #:description "alias expression"
     #:attributes (ast)
-    #:datum-literals (alias prefix)
-    (pattern (alias namespace:id xs:AliasMaps ...)
+    #:datum-literals (alias)
+    (pattern (alias ~! (~or* ns:id ns:string) xs:AliasSyms ...+)
              #:attr ast (go:alias
-                         (attribute namespace)
-                         (apply append (attribute xs.ast))))
-    (pattern (alias namespace:id xs:AliasMaps ...)
-             #:attr ast (go:alias (attribute namespace)
-                                  (apply append (attribute xs.ast)))))
+                         (*->string (syntax->datum (attribute ns)))
+                         (flatten (attribute xs.ast)))))
 
   ;;
 
@@ -515,10 +551,10 @@
     #:description "for statement"
     #:attributes (ast)
     #:datum-literals (for range)
-    (pattern (for ((~optional vars:ForVars #:defaults ((vars (syntax #f))))
-                   (~optional seq:ForSeq   #:defaults ((seq  (syntax #f))))
-                   (~optional pred:ExprRecur    #:defaults ((pred (syntax #f))))
-                   (~optional iter:ExprRecur    #:defaults ((iter (syntax #f)))))
+    (pattern (for ((~optional vars:ForVars   #:defaults ((vars (syntax #f))))
+                   (~optional seq:ForSeq     #:defaults ((seq  (syntax #f))))
+                   (~optional pred:ExprRecur #:defaults ((pred (syntax #f))))
+                   (~optional iter:ExprRecur #:defaults ((iter (syntax #f)))))
                body:ExprRecur ...+)
              #:attr ast (go:for (or (attribute vars.ast) null)
                                 (or (attribute seq.ast)  null)
@@ -1470,32 +1506,58 @@
 
                (test-suite "alias"
                            (check-equal?
-                            (go/expand (alias errors (New Errorf)))
-                            (list (go:expr (go:alias 'errors (list 'New 'Errorf)))))
+                            (go/expand (alias errors New Errorf))
+                            (list (go:expr (go:alias "errors" '("New" "Errorf")))))
                            (check-equal?
-                            (go/expand (alias errors (New (e Errorf))))
-                            (list (go:expr (go:alias 'errors (list 'New (cons 'e 'Errorf))))))
+                            (go/expand (alias errors New (rename (e Errorf))))
+                            (list (go:expr (go:alias "errors" '("New" ("e" . "Errorf"))))))
                            (check-equal?
-                            (go/expand (alias errors (prefix New (New Error))))
-                            (go/expand (alias errors ((NewNew New) (NewError Error)))))
+                            (go/expand (alias errors (prefix New (rename (Failure Error)))))
+                            (list (go:expr (go:alias "errors" '(("NewFailure" . "Error"))))))
                            (check-equal?
-                            (go/expand (alias xxx (Foo Bar) (prefix yyy (Baz Qux))))
-                            (list (go:expr (go:alias 'xxx (list 'Foo 'Bar
-                                                                (cons 'yyyBaz 'Baz)
-                                                                (cons 'yyyQux 'Qux))))))
+                            (go/expand (alias errors (suffix Example (rename (Failure Error)))))
+                            (go/expand (alias errors (rename (FailureExample Error)))))
                            (check-equal?
-                            (go/expand (alias errors (suffix New (New Error))))
-                            (go/expand (alias errors ((NewNew New) (ErrorNew Error)))))
+                            (go/expand (alias xxx Foo Bar (prefix yyy (rename (Baz Qux)))))
+                            (list (go:expr (go:alias "xxx" '("Foo" "Bar" ("yyyBaz" . "Qux"))))))
                            (check-equal?
-                            (go/expand (alias xxx (Foo Bar) (suffix yyy (Baz Qux))))
-                            (list (go:expr (go:alias 'xxx (list 'Foo 'Bar
-                                                                (cons 'Bazyyy 'Baz)
-                                                                (cons 'Quxyyy 'Qux))))))
+                            (go/expand (alias xxx Foo Bar (suffix yyy Baz Qux)))
+                            (list (go:expr (go:alias "xxx" '("Foo" "Bar" ("Bazyyy" . "Baz") ("Quxyyy" . "Qux"))))))
                            (check-equal?
-                            (go/expand (alias xxx (type (Foo Bar))))
-                            (list (go:expr (go:alias 'xxx (list 'Foo 'Bar
-                                                                (cons 'yyyBaz 'Baz)
-                                                                (cons 'yyyQux 'Qux)))))))
+                            (go/expand (alias xxx (const Foo Bar)))
+                            (list (go:expr (go:alias "xxx" (list
+                                                            (go:alias:const "Foo")
+                                                            (go:alias:const "Bar"))))))
+                           (check-equal?
+                            (go/expand (alias xxx (type Foo Bar)))
+                            (list (go:expr (go:alias "xxx" (list
+                                                            (go:alias:type "Foo")
+                                                            (go:alias:type "Bar"))))))
+                           (check-equal?
+                            (go/expand (alias xxx (prefix x y z) (type Foo Bar)))
+                            (list (go:expr (go:alias "xxx" (list '("xy" . "y")
+                                                                 '("xz" . "z")
+                                                                 (go:alias:type "Foo")
+                                                                 (go:alias:type "Bar"))))))
+                           (check-equal?
+                            (go/expand (alias xxx
+                                              (prefix x y (rename (zz z)))
+                                              (type Foo Bar)))
+                            (list (go:expr (go:alias "xxx" (list '("xy" . "y")
+                                                                 '("xzz" . "z")
+                                                                 (go:alias:type "Foo")
+                                                                 (go:alias:type "Bar"))))))
+                           (check-equal?
+                            (go/expand (alias xxx (type Bar (rename (foo Foo)))))
+                            (list (go:expr (go:alias "xxx" (list
+                                                            (go:alias:type "Bar")
+                                                            (go:alias:type '("foo" . "Foo")))))))
+                           (check-equal?
+                            (go/expand (alias xxx (type (prefix x foo Foo) (prefix y Bar))))
+                            (list (go:expr (go:alias "xxx" (list
+                                                            (go:alias:type '("xfoo" . "foo"))
+                                                            (go:alias:type '("xFoo" . "Foo"))
+                                                            (go:alias:type '("yBar" . "Bar"))))))))
 
                (test-suite "for"
                            (check-equal?

@@ -78,9 +78,11 @@
 
                ;;
 
-               (alias yaml   ((NewYamlEncoder NewEncoder)))
-               (alias errors (suffix Error  (New Wrap Wrapf Cause)))
-               (alias regexp (prefix Regexp (Match Compile)))
+               (alias yaml   (rename (NewYamlEncoder NewEncoder)))
+               (alias errors (suffix Error  New Wrap Wrapf Cause))
+               (alias regexp
+                      (prefix Regexp Match Compile)
+                      (type Regexp))
 
                ;;
 

@@ -3,9 +3,8 @@
          racket/string
          racket/format
          racket/list
-
          "type.rkt"
-         "tool.rkt")
+         (except-in "tool.rkt" flatten))
 
 (provide go/emit)
 
@@ -282,19 +281,38 @@
                         +empty+)))))
 
 (define (emit-alias ast)
-  (match ast
-    ((go:alias namespace syms)
-     (string-append "var" +space+ +lbracket+ +new-line+ +tab+
-                    (string-join
-                     (map (lambda (s)
-                            (let ((name (match s
-                                          ((cons sym orig) (cons sym orig))
-                                          (sym             (cons sym sym)))))
-                              (string-append (symbol->string (car name)) +space+ +eq+ +space+
-                                             (emit-expr namespace) +dot+ (symbol->string (cdr name)))))
-                          syms)
-                     (string-append +new-line+ +tab+)) +new-line+
-                    +rbracket+))))
+  (match-let (((go:alias namespace syms) ast))
+    (let ((buckets (make-hasheq)))
+      (for ((v (in-list syms)))
+        (cond
+          ((go:alias:const? v) (hash-set-cons! buckets 'const (go:alias:const-sym v)))
+          ((go:alias:type?  v) (hash-set-cons! buckets 'type  (go:alias:type-sym  v)))
+          ((or (and (not (list? v)) (cons? v))
+               (string? v))
+           (hash-set-cons! buckets 'var   v))
+          (#t (error (format "symbol ~a has not matched any folding function" v)))))
+      (string-join
+       (for/fold ((acc null))
+                 ((k (in-list (list 'const 'type 'var))))
+         (let ((bucket (hash-ref buckets k #f)))
+           (if bucket
+               (cons (string-append
+                      (symbol->string k) +space+ +lbracket+ +new-line+
+                      (string-join
+                       (for/fold ((acc null))
+                                 ((v (in-list bucket)))
+                         (cons (cond
+                                 ((and (not (list? v)) (cons? v))
+                                  (string-append +tab+ (car v) +space+ +eq+ +space+ namespace +dot+ (cdr v)))
+                                 ((string? v)
+                                  (string-append +tab+ v +space+ +eq+ +space+ namespace +dot+ v))
+                                 (#t (error (format "symbol ~a has not matched any folding function" v))))
+                               acc))
+                       +new-line+)
+                      +new-line+ +rbracket+)
+                     acc)
+               acc)))
+       +new-line+))))
 
 (define (emit-for ast)
   (match ast
@@ -488,7 +506,7 @@
     ((? go:const?    ast) (emit-var      ast))
     ((? go:go?       ast) (emit-go       ast))
     ((? go:if?       ast) (emit-if       ast))
-    ((? go:alias?     ast) (emit-alias     ast))
+    ((? go:alias?    ast) (emit-alias    ast))
     ((? go:for?      ast) (emit-for      ast))
     ((? go:begin?    ast) (emit-begin    ast))
     ((? go:switch?   ast) (emit-switch   ast))
@@ -1116,16 +1134,47 @@
 
                (test-suite "alias"
                            (check-equal?
-                            (emit-alias (go:alias (go:expr 'errors) (list 'New 'Errorf)))
+                            (emit-alias (go:alias "errors" '("New" "Errorf")))
                             "var (\n\tNew = errors.New\n\tErrorf = errors.Errorf\n)")
                            (check-equal?
-                            (emit-alias (go:alias 'errors (list 'New (cons 'e 'Errorf))))
+                            (emit-alias (go:alias "errors" '("New" ("e" . "Errorf"))))
                             "var (\n\tNew = errors.New\n\te = errors.Errorf\n)")
                            (check-equal?
-                            (emit-alias (go:alias 'xxx (list 'Foo 'Bar
-                                                             (cons 'yyyBaz 'Baz)
-                                                             (cons 'yyyQux 'Qux))))
-                            "var (\n\tFoo = xxx.Foo\n\tBar = xxx.Bar\n\tyyyBaz = xxx.Baz\n\tyyyQux = xxx.Qux\n)"))
+                            (emit-alias (go:alias "errors" '(("NewFailure" . "Error"))))
+                            "var (\n\tNewFailure = errors.Error\n)")
+                           (check-equal?
+                            (emit-alias (go:alias "xxx" '("Foo" "Bar" ("yyyBaz" . "Qux"))))
+                            "var (\n\tFoo = xxx.Foo\n\tBar = xxx.Bar\n\tyyyBaz = xxx.Qux\n)")
+                           (check-equal?
+                            (emit-alias (go:alias "xxx" '("Foo" "Bar" ("Bazyyy" . "Baz") ("Quxyyy" . "Qux"))))
+                            "var (\n\tFoo = xxx.Foo\n\tBar = xxx.Bar\n\tBazyyy = xxx.Baz\n\tQuxyyy = xxx.Qux\n)")
+                           (check-equal?
+                            (emit-alias (go:alias "xxx" (list
+                                                         (go:alias:const "Foo")
+                                                         (go:alias:const "Bar"))))
+                            "const (\n\tFoo = xxx.Foo\n\tBar = xxx.Bar\n)")
+                           (check-equal?
+                            (emit-alias (go:alias "xxx" (list
+                                                         (go:alias:type "Foo")
+                                                         (go:alias:type "Bar"))))
+                            "type (\n\tFoo = xxx.Foo\n\tBar = xxx.Bar\n)")
+                           (check-equal?
+                            (emit-alias (go:alias "xxx" (list '("xy" . "y")
+                                                              '("xz" . "z")
+                                                              (go:alias:type "Foo")
+                                                              (go:alias:type "Bar"))))
+                            "var (\n\txy = xxx.y\n\txz = xxx.z\n)\ntype (\n\tFoo = xxx.Foo\n\tBar = xxx.Bar\n)")
+                           (check-equal?
+                            (emit-alias (go:alias "xxx" (list
+                                                         (go:alias:type "Bar")
+                                                         (go:alias:type '("foo" . "Foo")))))
+                            "type (\n\tBar = xxx.Bar\n\tfoo = xxx.Foo\n)")
+                           (check-equal?
+                            (emit-alias (go:alias "xxx" (list
+                                                         (go:alias:type '("xfoo" . "foo"))
+                                                         (go:alias:type '("xFoo" . "Foo"))
+                                                         (go:alias:type '("yBar" . "Bar")))))
+                            "type (\n\txfoo = xxx.foo\n\txFoo = xxx.Foo\n\tyBar = xxx.Bar\n)"))
 
                (test-suite "for"
                            (check-equal?
