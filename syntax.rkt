@@ -288,15 +288,20 @@
   ;;
 
   (define-syntax-class Def
-    #:description "variable definition with type inference or seting"
+    #:description "variable definition and initialization with type inference"
     #:attributes (ast)
-    #:datum-literals (set def)
+    #:datum-literals (def)
     (pattern (def k:Expr v:ExprRecur)
              #:attr ast (go:def (list (attribute k.ast))
                                 (list (attribute v.ast))))
     (pattern (def (k:Expr ...) (v:ExprRecur ...))
              #:attr ast (go:def (attribute k.ast)
-                                (attribute v.ast)))
+                                (attribute v.ast))))
+
+  (define-syntax-class Set
+    #:description "variable initialization"
+    #:attributes (ast)
+    #:datum-literals (set)
     (pattern (set k:Expr v:ExprRecur)
              #:attr ast (go:set (list (attribute k.ast))
                                 (list (attribute v.ast))))
@@ -792,7 +797,7 @@
     (pattern (~commit (~or* v:Operator
                             v:Package  v:Import   v:Var
                             v:Type     v:Create
-                            v:Def      v:Go
+                            v:Def      v:Set      v:Go
                             v:If       v:When     v:Unless v:Alias
                             v:For      v:Begin
                             v:Switch   v:Cond     v:Select
@@ -825,7 +830,7 @@
   (type     Type)
   (create   Create)
   (def      Def)
-  (set      Def)
+  (set      Set)
   (go       Go)
   (if       If)
   (when     When)
