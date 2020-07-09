@@ -19,7 +19,7 @@ in stdenv.mkDerivation rec {
     findutils patchelf
     gnumakeWithGuile
 
-    racket
+    racket etcd
   ];
   shellHook = ''
     export LD_LIBRARY_PATH=${pkgs.openssl.out}/lib

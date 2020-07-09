@@ -1,8 +1,6 @@
-
 .PHONY: etcd
 etcd:
-	docker run --rm --net=host -v /usr/share/ca-certificates/:/etc/ssl/certs -p 4001:4001 -p 2380:2380 -p 2379:2379 \
-             --name etcd quay.io/coreos/etcd:v2.3.8 \
+	etcd \
              -name etcd0 \
              -advertise-client-urls http://127.0.0.1:2379,http://127.0.0.1:4001 \
              -listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001 \
