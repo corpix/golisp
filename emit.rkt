@@ -90,8 +90,12 @@
 			(string-append +space+ +backtick+ (*->string tag) +backtick+)
 			+empty+)))
     ((go:type:id:interface:field name type)
-     (string-append (string-append (*->string name)
-                                   (if type (emit-type type) +empty+))))
+     (string-append (string-append
+                     (*->string name)
+                     (if type
+                         (let ((func (go:type:id-type type)))
+                           (if func (emit-type func) (emit-type type)))
+                         +empty+))))
 
     ((go:type:id:slice type)
      (string-append +lsbracket+ +rsbracket+ (emit-type type)))
@@ -674,12 +678,23 @@
                              (go:type #f (go:type:id
                                           'interface
                                           (go:type:id:interface
+                                           (list (go:type:id:interface:field 'x (go:type:id 'func (go:type:id:func null null))))))))
+                            "interface{\n\tx () ()\n}")
+                           (check-equal?
+                            (emit-type
+                             (go:type #f (go:type:id
+                                          'interface
+                                          (go:type:id:interface
                                            (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f)))))))
-                            (string-append "interface"
-                                           +lcbracket+
-                                           +new-line+ +tab+ "io.Reader"
-                                           +new-line+
-                                           +rcbracket+))
+                            "interface{\n\tio.Reader\n}")
+                           (check-equal?
+                            (emit-type
+                             (go:type #f (go:type:id
+                                          'interface
+                                          (go:type:id:interface
+                                           (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f))
+                                                 (go:type:id:interface:field 'x (go:type:id 'func (go:type:id:func null null))))))))
+                            "interface{\n\tio.Reader\n\tx () ()\n}")
 
                            (check-equal?
                             (emit-type
