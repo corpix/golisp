@@ -545,10 +545,17 @@
     #:description "alias expression"
     #:attributes (ast)
     #:datum-literals (alias)
-    (pattern (alias ~! (~or* ns:id ns:string) xs:AliasSyms ...+)
+    (pattern (alias (~or* ns:id ns:string) xs:AliasSyms ...+)
              #:attr ast (go:alias
                          (*->string (syntax->datum (attribute ns)))
-                         (flatten (attribute xs.ast)))))
+                         (flatten (attribute xs.ast))))
+    (pattern (alias ((~or* ns:id ns:string) xs:AliasSyms ...+) ...+)
+             #:attr ast (map
+                         (lambda (namespace syms)
+                           (go:alias (*->string (syntax->datum namespace))
+                                     (flatten syms)))
+                         (attribute ns)
+                         (attribute xs.ast))))
 
   ;;
 
@@ -1048,6 +1055,11 @@
                                                                                                    #f)
                                                                           (go:type:id:struct:field 'y (go:type:id 'X #f) #f))))))))
                            (check-equal?
+                            (go/expand (type (interface (x (func)))))
+                            (list (go:expr (go:type #f (go:type:id 'interface
+                                                                   (go:type:id:interface
+                                                                    (list (go:type:id:interface:field 'x (go:type:id 'func (go:type:id:func null null))))))))))
+                           (check-equal?
                             (go/expand (type (interface io.Reader (x (func)))))
                             (list (go:expr (go:type #f (go:type:id 'interface
                                                                    (go:type:id:interface
@@ -1513,6 +1525,11 @@
                            (check-equal?
                             (go/expand (alias errors New Errorf))
                             (list (go:expr (go:alias "errors" '("New" "Errorf")))))
+                           (check-equal?
+                            (go/expand (alias (errors New Errorf)
+                                              (fmt Printf)))
+                            (list (go:expr (list (go:alias "errors" '("New" "Errorf"))
+                                                 (go:alias "fmt"    '("Printf"))))))
                            (check-equal?
                             (go/expand (alias errors New (rename (e Errorf))))
                             (list (go:expr (go:alias "errors" '("New" ("e" . "Errorf"))))))
