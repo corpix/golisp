@@ -36,19 +36,20 @@
 
 (define-syntax (define-gosyntax stx)
   (syntax-parse stx
-    ((_ x xs ...)
+    ((_ x xs ...+)
      (let* ((name+args (syntax->list (syntax x)))
             (name (car name+args))
             (args (cdr name+args)))
        (with-syntax ((name name)
                      (go/name (format-id name "go/~a" name)))
-         (with-syntax ((xx #`(go/name #,@args)))
-           #`(begin
-               (define-syntax xx xs ...)
-               (hash-set! (*macro*)
-                          (quote name)
-                          (lambda caller-args
-                            (eval (cons (quote go/name) caller-args) ns))))))))))
+         (with-syntax ((xx (quasisyntax (go/name (unsyntax-splicing args)))))
+           (quasisyntax
+            (begin
+              (define-syntax xx xs ...)
+              (hash-set! (*macro*)
+                         (quote name)
+                         (lambda caller-args
+                           (eval (cons (quote go/name) caller-args) ns)))))))))))
 
 (define-syntax (define-gosyntax-class-map stx)
   (syntax-parse stx
@@ -81,37 +82,37 @@
        ^  bitwise-xor
        << bitwise-left-shift
        >> bitwise-right-shift)
-    (pattern ((~or* op:+ op:-) xs:ExprRecur ...+)
+    (pattern ((~or* op:+ op:-) ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
-    (pattern ((~or* op:% op:* op:/) xs:ExprRecur ...+)
+    (pattern ((~or* op:% op:* op:/) ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
-    (pattern ((~or* op:== op:!= op:> op:< op:>= op:<=) xs:ExprRecur ...+)
+    (pattern ((~or* op:== op:!= op:> op:< op:>= op:<=) ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax op))
                                      (attribute xs.ast)))
-    (pattern ((~or* ! not) x:ExprRecur)
+    (pattern ((~or* ! not) ~! x:ExprRecur)
              #:attr ast (go:operator (*->symbol (syntax !))
                                      (list (attribute x.ast))))
-    (pattern ((~or* && and) xs:ExprRecur ...+)
+    (pattern ((~or* && and) ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax &&))
                                      (attribute xs.ast)))
-    (pattern ((~or* \|\| or) xs:ExprRecur ...+)
+    (pattern ((~or* \|\| or) ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax \|\|))
                                      (attribute xs.ast)))
-    (pattern (bitwise-and xs:ExprRecur ...+)
+    (pattern (bitwise-and ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax &))
                                      (attribute xs.ast)))
-    (pattern (bitwise-or xs:ExprRecur ...+)
+    (pattern (bitwise-or ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax \|))
                                      (attribute xs.ast)))
-    (pattern ((~or* ^ bitwise-xor) xs:ExprRecur ...+)
+    (pattern ((~or* ^ bitwise-xor) ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax ^))
                                      (attribute xs.ast)))
-    (pattern ((~or* << bitwise-left-shift) xs:ExprRecur ...+)
+    (pattern ((~or* << bitwise-left-shift) ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax <<))
                                      (attribute xs.ast)))
-    (pattern ((~or* >> bitwise-right-shift) xs:ExprRecur ...+)
+    (pattern ((~or* >> bitwise-right-shift) ~! xs:ExprRecur ...+)
              #:attr ast (go:operator (*->symbol (syntax >>))
                                      (attribute xs.ast))))
 
@@ -121,7 +122,7 @@
     #:description "map type description"
     #:attributes (id kind ast)
     #:datum-literals (map)
-    (pattern (map k:TypeId v:TypeId)
+    (pattern (map ~! k:TypeId v:TypeId)
              #:attr id   (quote map)
              #:attr kind (quote complex)
              #:attr ast  (go:type:id:map (attribute k.ast)
@@ -131,7 +132,7 @@
     #:description "struct type description"
     #:attributes (id kind ast)
     #:datum-literals (struct)
-    (pattern (struct xs:TypeIdStruct/Field ...)
+    (pattern (struct ~! xs:TypeIdStruct/Field ...)
              #:attr id   (quote struct)
              #:attr kind (quote complex)
              #:attr ast  (go:type:id:struct (attribute xs.ast))))
@@ -151,7 +152,7 @@
     #:description "interface type description"
     #:attributes (id kind ast)
     #:datum-literals (interface)
-    (pattern (interface xs:TypeIdInterface/Field ...)
+    (pattern (interface ~! xs:TypeIdInterface/Field ...)
              #:attr id   (quote interface)
              #:attr kind (quote complex)
              #:attr ast  (go:type:id:interface (attribute xs.ast))))
@@ -172,7 +173,7 @@
     #:description "slice type description"
     #:attributes (id kind ast)
     #:datum-literals (slice)
-    (pattern (slice t:TypeId)
+    (pattern (slice ~! t:TypeId)
              #:attr id   (quote slice)
              #:attr kind (quote complex)
              #:attr ast  (go:type:id:slice (attribute t.ast))))
@@ -181,7 +182,7 @@
     #:description "array type description"
     #:attributes (id kind ast)
     #:datum-literals (array ...)
-    (pattern (array t:TypeId (~or* size:integer size:...))
+    (pattern (array ~! t:TypeId (~or* size:integer size:...))
              #:attr id (quote array)
              #:attr kind (quote complex)
              #:attr ast (go:type:id:array (attribute t.ast) (syntax->datum (syntax size)))))
@@ -190,7 +191,7 @@
     #:description "pointer type description"
     #:attributes (id kind ast)
     #:datum-literals (ptr)
-    (pattern (ptr t:TypeId)
+    (pattern (ptr ~! t:TypeId)
              #:attr id   (quote ptr)
              #:attr kind (quote primitive)
              #:attr ast  (go:type:id:ptr (attribute t.ast))))
@@ -199,8 +200,8 @@
     #:description "chan type description"
     #:attributes (id kind ast)
     #:datum-literals (chan -> <-)
-    (pattern (chan (~optional (~or* direction:-> direction:<-)
-                              #:defaults ((direction (syntax #f))))
+    (pattern (chan ~! (~optional (~or* direction:-> direction:<-)
+                                 #:defaults ((direction (syntax #f))))
                    t:TypeId)
              #:attr id   (quote chan)
              #:attr kind (quote primitive)
@@ -210,8 +211,17 @@
     #:description "func type description"
     #:attributes (id kind ast)
     #:datum-literals (func)
-    (pattern (func (~optional i:FuncIO #:defaults ((i (syntax null))))
-                   (~optional o:FuncIO #:defaults ((o (syntax null)))))
+    (pattern (func)
+             #:attr id   (quote func)
+             #:attr kind (quote primitive)
+             #:attr ast  (go:type:id:func null null))
+    (pattern (func ())
+             #:attr id   (quote func)
+             #:attr kind (quote primitive)
+             #:attr ast  (go:type:id:func null null))
+    (pattern (func
+              ((~optional i:FuncIO #:defaults ((i (syntax null))))
+               (~optional o:FuncIO #:defaults ((o (syntax null))))))
              #:attr id   (quote func)
              #:attr kind (quote primitive)
              #:attr ast  (go:type:id:func
@@ -241,13 +251,13 @@
                    t:TypeId%)
              #:attr kind (attribute t.kind)
              #:attr ast (go:type:id (attribute t.id) (attribute t.ast)))
-    (pattern (cast v:TypeId)
+    (pattern (cast ~! v:TypeId)
              #:attr kind (attribute v.kind)
              #:attr ast  (attribute v.ast))
-    (pattern (ref v:TypeId)
+    (pattern (ref ~! v:TypeId)
              #:attr kind (attribute v.kind)
              #:attr ast  (go:ref   (attribute v.ast)))
-    (pattern (deref v:TypeId)
+    (pattern (deref ~! v:TypeId)
              #:attr kind (attribute v.kind)
              #:attr ast  (go:deref (attribute v.ast))))
 
@@ -275,10 +285,10 @@
   (define-syntax-class Create
     #:description "initialization of the type"
     #:attributes (ast)
-    #:datum-literals (create slice array struct map )
+    #:datum-literals (create)
     (pattern (create t:TypeId)
              #:attr ast (go:create (attribute t.ast) null))
-    (pattern (create t:TypeId (xs:CompositeTypeInitializer ...))
+    (pattern (create t:TypeId (xs:CompositeTypeInitializer ...+))
              #:attr ast (go:create (attribute t.ast)
                                    (attribute xs.ast)))
     (pattern (create t:TypeId xs:ExprRecur)
@@ -294,7 +304,7 @@
     (pattern (def k:Expr v:ExprRecur)
              #:attr ast (go:def (list (attribute k.ast))
                                 (list (attribute v.ast))))
-    (pattern (def (k:Expr ...) (v:ExprRecur ...))
+    (pattern (def (k:Expr ...+) (v:ExprRecur ...+))
              #:attr ast (go:def (attribute k.ast)
                                 (attribute v.ast))))
 
@@ -305,7 +315,7 @@
     (pattern (set k:Expr v:ExprRecur)
              #:attr ast (go:set (list (attribute k.ast))
                                 (list (attribute v.ast))))
-    (pattern (set (k:Expr ...) (v:ExprRecur ...))
+    (pattern (set (k:Expr ...+) (v:ExprRecur ...+))
              #:attr ast (go:set (attribute k.ast)
                                 (attribute v.ast))))
 
@@ -321,7 +331,7 @@
     #:description "current package name"
     #:attributes (ast)
     #:datum-literals (package)
-    (pattern (package name:PackageName)
+    (pattern (package ~! name:PackageName)
              #:attr ast (go:package (attribute name.ast))))
 
   (define-syntax-class ImportPackage
@@ -342,7 +352,7 @@
     #:description "package imports"
     #:attributes (ast)
     #:datum-literals (import)
-    (pattern (import (~or* v:ImportRenamePackage v:ImportPackage) ...+)
+    (pattern (import ~! (~or* v:ImportRenamePackage v:ImportPackage) ...+)
              #:attr ast (go:imports (attribute v.ast))))
 
 
@@ -351,20 +361,19 @@
   (define-syntax-class FuncIO
     #:description "type to name binding"
     #:attributes (ast)
-    (pattern (type:TypeId ...)
+    (pattern () #:attr ast null)
+    (pattern (type:TypeId ...+)
              #:attr ast (attribute type.ast))
-    (pattern ((name:id type:TypeId) ...)
+    (pattern ((name:id type:TypeId) ...+)
              #:attr ast (map (lambda (n t) (cons n t))
-                             (syntax->list (syntax (name ...)))
+                             (attribute name)
                              (attribute type.ast))))
 
   (define-syntax-class Func
     #:description "named function definition or lambda expression"
     #:attributes (ast)
-    #:datum-literals (func struct)
-    (pattern (func () body:ExprRecur ...)
-             #:attr ast (go:func (cons #f #f) #f null null
-                                 (attribute body.ast)))
+    #:datum-literals (func)
+    (pattern (func) #:attr ast (go:func (cons #f #f) #f null null null))
     (pattern (func ((~optional i:FuncIO #:defaults ((i (syntax null))))
                     (~optional o:FuncIO #:defaults ((o (syntax null)))))
                    body:ExprRecur ...)
@@ -372,13 +381,15 @@
                                  (or (attribute i.ast) null)
                                  (or (attribute o.ast) null)
                                  (attribute body.ast)))
-    (pattern (func ((~or* name:id (name:id (struct-binding:id struct-type:TypeId)))
-                    (~optional i:FuncIO #:defaults ((i (syntax null))))
-                    (~optional o:FuncIO #:defaults ((o (syntax null)))))
-                   body:ExprRecur ...)
+    (pattern (func
+              ((~or* name:id (name:id (struct-binding:id struct-type:TypeId)))
+               (~optional i:FuncIO #:defaults ((i (syntax null))))
+               (~optional o:FuncIO #:defaults ((o (syntax null)))))
+              body:ExprRecur ...)
              #:attr ast (go:func (cons (attribute struct-type.ast)
                                        (attribute struct-binding))
-                                 (and (syntax->datum (syntax name)) (*->symbol (syntax name)))
+                                 (and (syntax->datum (attribute name))
+                                      (*->symbol (attribute name)))
                                  (or (attribute i.ast) null)
                                  (or (attribute o.ast) null)
                                  (attribute body.ast))))
@@ -386,13 +397,13 @@
   (define-syntax-class FuncCall
     #:description "function call"
     #:attributes (ast)
-    (pattern (r:id xs:ExprRecur ...)
+    (pattern (r:id ~! xs:ExprRecur ...)
              #:attr ast (go:func:call (syntax->datum (syntax r))
                                       (attribute xs.ast)))
-    (pattern (r:Func xs:ExprRecur ...)
+    (pattern (r:Func ~! xs:ExprRecur ...)
              #:attr ast (go:func:call (attribute r.ast)
                                       (attribute xs.ast)))
-    (pattern (r:ExprRecur xs:ExprRecur ...)
+    (pattern (r:ExprRecur ~! xs:ExprRecur ...)
              #:attr ast (go:func:call (attribute r.ast)
                                       (attribute xs.ast))))
 
@@ -414,9 +425,9 @@
     #:description "variable definition"
     #:attributes (ast)
     #:datum-literals (var const)
-    (pattern (var binding:VarBinding ...+)
+    (pattern (var ~! binding:VarBinding ...+)
              #:attr ast (go:var (attribute binding.ast)))
-    (pattern (const binding:VarBinding ...+)
+    (pattern (const ~! binding:VarBinding ...+)
              #:attr ast (go:const (attribute binding.ast))))
 
   ;;
@@ -425,7 +436,8 @@
     #:description "go routine invocation"
     #:attributes (ast)
     #:datum-literals (go)
-    (pattern (go expr:ExprRecur) #:attr ast (go:go (attribute expr.ast))))
+    (pattern (go ~! expr:ExprRecur)
+             #:attr ast (go:go (attribute expr.ast))))
 
   ;;
 
@@ -433,7 +445,9 @@
     #:description "if statement"
     #:attributes (ast)
     #:datum-literals (if)
-    (pattern (if condition:ExprRecur then:ExprRecur
+    (pattern (if ~!
+                 condition:ExprRecur
+                 then:ExprRecur
                  (~optional else:ExprRecur #:defaults ((else (syntax #f)))))
              #:attr ast (go:if (attribute condition.ast)
                                (attribute then.ast)
@@ -443,7 +457,7 @@
     #:description "when statement"
     #:attributes (ast)
     #:datum-literals (when)
-    (pattern (when condition:ExprRecur body:ExprRecur ...)
+    (pattern (when ~! condition:ExprRecur body:ExprRecur ...+)
              #:attr ast (go:if (attribute condition.ast)
                                (go:begin (attribute body.ast))
                                #f)))
@@ -452,7 +466,7 @@
     #:description "unless statement"
     #:attributes (ast)
     #:datum-literals (unless)
-    (pattern (unless condition:ExprRecur then:ExprRecur ...)
+    (pattern (unless ~! condition:ExprRecur then:ExprRecur ...+)
              #:attr ast (go:if (go:operator (quote !) (attribute condition.ast))
                                (go:begin (attribute then.ast))
                                #f)))
@@ -473,7 +487,7 @@
     #:description "alias wrap expression (prefix sym xs ...) or (suffix sym xs ...)"
     #:attributes (ast builder)
     #:datum-literals (prefix suffix)
-    (pattern (prefix ~! sym:AliasSym xs:AliasSyms ...)
+    (pattern (prefix ~! sym:AliasSym xs:AliasSyms ...+)
              #:attr ast (map
                          (lambda (vv builder)
                            (builder (lambda (v) (cons (~a (car (attribute sym.ast)) v) v))
@@ -481,7 +495,7 @@
                          (attribute xs.ast)
                          (attribute xs.builder))
              #:attr builder alias-rename-builder)
-    (pattern (suffix ~! sym:AliasSym xs:AliasSyms ...)
+    (pattern (suffix ~! sym:AliasSym xs:AliasSyms ...+)
              #:attr ast (map
                          (lambda (vv builder)
                            (builder (lambda (v) (cons (~a v (car (attribute sym.ast))) v))
@@ -494,7 +508,7 @@
     #:description "alias rename expression (rename (new old) ...)"
     #:attributes (ast builder)
     #:datum-literals (rename)
-    (pattern (rename ~! (new-name:AliasSym old-name:AliasSym) ...)
+    (pattern (rename ~! (new-name:AliasSym old-name:AliasSym) ...+)
              #:attr ast (map
                          (lambda (new old) (cons new old))
                          (flatten (attribute new-name.ast))
@@ -505,7 +519,7 @@
     #:description "alias const expression (const xs ...)"
     #:attributes (ast builder)
     #:datum-literals (const)
-    (pattern (const ~! (~or* xs:AliasWrap xs:AliasRename xs:AliasSyms) ...)
+    (pattern (const ~! (~or* xs:AliasWrap xs:AliasRename xs:AliasSyms) ...+)
              #:attr ast (map
                          (lambda (v) (go:alias:const v))
                          (flatten (attribute xs.ast)))
@@ -518,7 +532,7 @@
     #:description "alias type expression (type xs ...)"
     #:attributes (ast builder)
     #:datum-literals (type)
-    (pattern (type ~! (~or* xs:AliasWrap xs:AliasRename xs:AliasSyms) ...)
+    (pattern (type ~! (~or* xs:AliasWrap xs:AliasRename xs:AliasSyms) ...+)
              #:attr ast (map
                          (lambda (v) (go:alias:type v))
                          (flatten (attribute xs.ast)))
@@ -563,11 +577,11 @@
     #:description "for statement"
     #:attributes (ast)
     #:datum-literals (for range)
-    (pattern (for ((~optional vars:ForVars   #:defaults ((vars (syntax #f))))
-                   (~optional seq:ForSeq     #:defaults ((seq  (syntax #f))))
-                   (~optional pred:ExprRecur #:defaults ((pred (syntax #f))))
-                   (~optional iter:ExprRecur #:defaults ((iter (syntax #f)))))
-               body:ExprRecur ...+)
+    (pattern (for ~! ((~optional vars:ForVars   #:defaults ((vars (syntax #f))))
+                      (~optional seq:ForSeq     #:defaults ((seq  (syntax #f))))
+                      (~optional pred:ExprRecur #:defaults ((pred (syntax #f))))
+                      (~optional iter:ExprRecur #:defaults ((iter (syntax #f)))))
+                  body:ExprRecur ...+)
              #:attr ast (go:for (or (attribute vars.ast) null)
                                 (or (attribute seq.ast)  null)
                                 (attribute pred.ast)
@@ -578,14 +592,14 @@
   (define-syntax-class ForVars
     #:description "for statement variable bindings"
     #:attributes (ast)
-    (pattern (vars:id ...+) #:attr ast (syntax->list (syntax (vars ...))))
-    (pattern vars:id        #:attr ast (list (syntax->datum (syntax vars)))))
+    (pattern (vars:id ...+) #:attr ast (attribute vars))
+    (pattern vars:id        #:attr ast (list (syntax->datum (attribute vars)))))
 
   (define-splicing-syntax-class ForSeq
     #:description "for statement sequence"
     #:attributes (kind ast)
     #:datum-literals (range)
-    (pattern (k:range seq:ExprRecur)
+    (pattern (k:range ~! seq:ExprRecur)
              #:attr kind (attribute k)
              #:attr ast (list (attribute seq.ast)))
     (pattern seq:ExprRecur
@@ -598,7 +612,7 @@
     #:description "for statement"
     #:attributes (ast)
     #:datum-literals (begin)
-    (pattern (begin exprs:ExprRecur ...+)
+    (pattern (begin ~! exprs:ExprRecur ...+)
              #:attr ast (go:begin (attribute exprs.ast))))
 
   ;;
@@ -607,7 +621,7 @@
     #:description "switch statement"
     #:attributes (ast)
     #:datum-literals (switch)
-    (pattern (switch value:ExprRecur cases:Case ...+)
+    (pattern (switch ~! value:ExprRecur cases:Case ...+)
              #:attr ast (go:switch (attribute value.ast)
                                    (attribute cases.ast))))
 
@@ -615,7 +629,7 @@
     #:description "cond statement"
     #:attributes (ast)
     #:datum-literals (cond)
-    (pattern (cond cases:Case ...+)
+    (pattern (cond ~! cases:Case ...+)
              #:attr ast (go:switch null (attribute cases.ast))))
 
   ;;
@@ -624,7 +638,7 @@
     #:description "select statement"
     #:attributes (ast)
     #:datum-literals (select)
-    (pattern (select cases:Case ...+)
+    (pattern (select ~! cases:Case ...+)
              #:attr ast (go:select (attribute cases.ast))))
 
   ;;
@@ -633,10 +647,10 @@
     #:description "switch statement case"
     #:attributes (ast)
     #:datum-literals (default)
-    (pattern (default body:ExprRecur ...)
+    (pattern (default ~! body:ExprRecur ...+)
              #:attr ast (go:case 'default
                                  (attribute body.ast)))
-    (pattern (pred:ExprRecur body:ExprRecur ...)
+    (pattern (pred:ExprRecur body:ExprRecur ...+)
              #:attr ast (go:case (attribute pred.ast)
                                  (attribute body.ast))))
 
@@ -659,28 +673,29 @@
     #:description "return statement"
     #:attributes (ast)
     #:datum-literals (return)
-    (pattern (return values:ExprRecur ...)
+    (pattern (return ~! values:ExprRecur ...)
              #:attr ast (go:return (attribute values.ast))))
 
   (define-syntax-class Break
     #:description "break statement"
     #:attributes (ast)
     #:datum-literals (break)
-    (pattern (break (~optional label:id #:defaults ((label (syntax #f)))))
+    (pattern (break ~! (~optional label:id #:defaults ((label (syntax #f)))))
              #:attr ast (go:break (syntax-e (syntax label)))))
 
   (define-syntax-class Continue
     #:description "continue statement"
     #:attributes (ast)
     #:datum-literals (continue)
-    (pattern (continue (~optional label:id #:defaults ((label (syntax #f)))))
+    (pattern (continue ~! (~optional label:id #:defaults ((label (syntax #f)))))
              #:attr ast (go:continue (syntax-e (syntax label)))))
 
   (define-syntax-class Spread
     #:description "spread (value...) statement"
     #:attributes (ast)
     #:datum-literals (spread)
-    (pattern (spread expr:ExprRecur) #:attr ast (go:spread (attribute expr.ast))))
+    (pattern (spread ~! expr:ExprRecur)
+             #:attr ast (go:spread (attribute expr.ast))))
 
   ;;
 
@@ -688,7 +703,7 @@
     #:description "labeled statement"
     #:attributes (ast)
     #:datum-literals (label)
-    (pattern (label name:id e:ExprRecur)
+    (pattern (label ~! name:id e:ExprRecur)
              #:attr ast (go:label (syntax-e (syntax name))
                                   (attribute e.ast))))
 
@@ -696,7 +711,7 @@
     #:description "goto statement"
     #:attributes (ast)
     #:datum-literals (goto)
-    (pattern (goto label:id)
+    (pattern (goto ~! label:id)
              #:attr ast (go:goto (syntax-e (syntax label)))))
 
   ;;
@@ -713,7 +728,7 @@
     #:description "defer statement"
     #:attributes (ast)
     #:datum-literals (defer)
-    (pattern (defer body:ExprRecur) #:attr ast (go:defer (attribute body.ast))))
+    (pattern (defer ~! body:ExprRecur) #:attr ast (go:defer (attribute body.ast))))
 
   ;;
 
@@ -721,7 +736,7 @@
     #:description "slicing expression"
     #:attributes (ast)
     #:datum-literals (slice)
-    (pattern (slice value:ExprRecur
+    (pattern (slice ~! value:ExprRecur
                     start:ExprRecur
                     (~optional end:ExprRecur
                                #:defaults ((end (syntax #f)))))
@@ -733,7 +748,7 @@
     #:description "index expression"
     #:attributes (ast)
     #:datum-literals (index)
-    (pattern (index value:ExprRecur key:ExprRecur)
+    (pattern (index ~! value:ExprRecur key:ExprRecur)
              #:attr ast (go:index (attribute value.ast)
                                   (attribute key.ast))))
 
@@ -741,7 +756,7 @@
     #:description "key expression"
     #:attributes (ast)
     #:datum-literals (key)
-    (pattern (key object:ExprRecur k:id ...)
+    (pattern (key ~! object:ExprRecur k:id ...+)
              #:attr ast (go:key (attribute object.ast)
                                 (attribute k))))
 
@@ -759,7 +774,7 @@
     #:description "channel receive expression"
     #:attributes (ast)
     #:datum-literals (receive <-)
-    (pattern ((~or* receive <-) chan:ExprRecur)
+    (pattern ((~or* receive <-) ~! chan:ExprRecur)
              #:attr ast (go:receive (attribute chan.ast))))
 
   ;;
@@ -768,14 +783,14 @@
     #:description "increment identifier value"
     #:attributes (ast)
     #:datum-literals (inc ++)
-    (pattern ((~or* inc ++) id:id)
+    (pattern ((~or* inc ++) ~! id:id)
              #:attr ast (go:inc (*->symbol (syntax id)))))
 
   (define-syntax-class Dec
     #:description "decrement identifier value"
     #:attributes (ast)
     #:datum-literals (dec --)
-    (pattern ((~or* dec --) id:id)
+    (pattern ((~or* dec --) ~! id:id)
              #:attr ast (go:dec (*->symbol (syntax id)))))
 
   ;;
@@ -784,14 +799,14 @@
     #:description "reference (get a pointer) of the expression"
     #:attributes (ast)
     #:datum-literals (ref)
-    (pattern (ref ex:ExprRecur)
+    (pattern (ref ~! ex:ExprRecur)
              #:attr ast (go:ref (attribute ex.ast))))
 
   (define-syntax-class Deref
     #:description "dereference (get a pointer) of the expression"
     #:attributes (ast)
     #:datum-literals (deref)
-    (pattern (deref ex:ExprRecur)
+    (pattern (deref ~! ex:ExprRecur)
              #:attr ast (go:deref (attribute ex.ast))))
 
   ;;
@@ -801,22 +816,22 @@
     #:attributes (ast)
     #:datum-literals (nil)
     #:commit
-    (pattern (~commit (~or* v:Operator
-                            v:Package  v:Import   v:Var
-                            v:Type     v:Create
-                            v:Def      v:Set      v:Go
-                            v:If       v:When     v:Unless v:Alias
-                            v:For      v:Begin
-                            v:Switch   v:Cond     v:Select
-                            v:Cast     v:Return   v:Break  v:Continue
-                            v:Spread
-                            v:Label
-                            v:Goto     v:Iota     v:Defer
-                            v:Slice    v:Index    v:Key
-                            v:Send     v:Receive
-                            v:Inc      v:Dec
-                            v:Ref      v:Deref
-                            v:Func))
+    (pattern (~or* v:Operator
+                   v:Package  v:Import   v:Var
+                   v:Type     v:Create
+                   v:Def      v:Set      v:Go
+                   v:If       v:When     v:Unless v:Alias
+                   v:For      v:Begin
+                   v:Switch   v:Cond     v:Select
+                   v:Cast     v:Return   v:Break  v:Continue
+                   v:Spread
+                   v:Label
+                   v:Goto     v:Iota     v:Defer
+                   v:Slice    v:Index    v:Key
+                   v:Send     v:Receive
+                   v:Inc      v:Dec
+                   v:Ref      v:Deref
+                   v:Func)
              #:attr ast (go:expr (attribute v.ast)))
     (pattern (~or* v:id v:boolean v:number v:string v:nil)
              #:attr ast (go:expr (syntax->datum (syntax v)))))
@@ -872,11 +887,11 @@
 
 (define-gosyntax (prog stx)
   (syntax-parse stx
-    ((_ xs:ExprRecur ...) (attribute xs.ast))))
+    ((_ xs:ExprRecur ...+) (attribute xs.ast))))
 
 (define-gosyntax (prelude stx)
   (syntax-parse stx
-    ((_ xs:ExprRecur ...)
+    ((_ xs:ExprRecur ...+)
      (begin0 (syntax (void))
        (set-box! (*prelude*)
                  (append (unbox (*prelude*))
@@ -884,7 +899,7 @@
 
 (define-gosyntax (epilogue stx)
   (syntax-parse stx
-    ((_ xs:ExprRecur ...)
+    ((_ xs:ExprRecur ...+)
      (begin0 (syntax (void))
        (set-box! (*epilogue*)
                  (append (unbox (*epilogue*))
@@ -1060,13 +1075,12 @@
                                                                    (go:type:id:interface
                                                                     (list (go:type:id:interface:field 'x (go:type:id 'func (go:type:id:func null null))))))))))
                            (check-equal?
-                            (go/expand (type (interface io.Reader (x (func)))))
+                            (go/expand (type (interface (x (func ())))))
                             (list (go:expr (go:type #f (go:type:id 'interface
                                                                    (go:type:id:interface
-                                                                    (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f))
-                                                                          (go:type:id:interface:field 'x (go:type:id 'func (go:type:id:func null null))))))))))
+                                                                    (list (go:type:id:interface:field 'x (go:type:id 'func (go:type:id:func null null))))))))))
                            (check-equal?
-                            (go/expand (type (interface io.Reader (x (func () ())))))
+                            (go/expand (type (interface io.Reader (x (func)))))
                             (list (go:expr (go:type #f (go:type:id 'interface
                                                                    (go:type:id:interface
                                                                     (list (go:type:id:interface:field #f (go:type:id 'io.Reader #f))
@@ -1075,7 +1089,7 @@
                             (go/expand
                              (type
                               (interface io.Reader
-                                (x (func ((k int) (v (map int string))) (error)))
+                                (x (func (((k int) (v (map int string))) (error))))
                                 (y (struct
                                      (x (interface))
                                      (y (map bool (struct))))))))
@@ -1123,7 +1137,7 @@
                             (list (go:expr (go:type #f (go:type:id 'chan  (go:type:id:chan #f  (go:type:id 'struct (go:type:id:struct null))))))))
 
                            (check-equal?
-                            (go/expand (type (func ((k string) (v int)) (int error))))
+                            (go/expand (type (func (((k string) (v int)) (int error)))))
                             (list (go:expr
                                    (go:type
                                     #f
@@ -1135,7 +1149,7 @@
                                       (list (go:type:id 'int   #f)
                                             (go:type:id 'error #f))))))))
                            (check-equal?
-                            (go/expand (type (func (string int) (int error))))
+                            (go/expand (type (func ((string int) (int error)))))
                             (list (go:expr
                                    (go:type
                                     #f
@@ -1253,6 +1267,10 @@
                             (list (go:expr (go:def (list (go:expr 'x) (go:expr 'y))
                                                    (list (go:expr 1) (go:expr 2))))))
                            (check-equal?
+                            (go/expand (def x (func)))
+                            (list (go:expr (go:def (list (go:expr 'x))
+                                                   (list (go:expr (go:func (cons #f #f) #f null null null)))))))
+                           (check-equal?
                             (go/expand (def x (func ())))
                             (list (go:expr (go:def (list (go:expr 'x))
                                                    (list (go:expr (go:func (cons #f #f) #f null null null)))))))
@@ -1272,6 +1290,10 @@
                             (go/expand (set (x y) (1 2)))
                             (list (go:expr (go:set (list (go:expr 'x) (go:expr 'y))
                                                    (list (go:expr 1) (go:expr 2))))))
+                           (check-equal?
+                            (go/expand (set x (func)))
+                            (list (go:expr (go:set (list (go:expr 'x))
+                                                   (list (go:expr (go:func (cons #f #f) #f null null null)))))))
                            (check-equal?
                             (go/expand (set x (func ())))
                             (list (go:expr (go:set (list (go:expr 'x))
@@ -1328,24 +1350,33 @@
 
                (test-suite "func"
                            (check-equal?
+                            (go/expand (func))
+                            (list (go:expr (go:func (cons #f #f) #f null null null))))
+                           (check-equal?
                             (go/expand (func ()))
                             (list (go:expr (go:func (cons #f #f) #f null null null))))
                            (check-equal?
-                            (go/expand (func (() ())))
-                            (list (go:expr (go:func (cons #f #f) #f null null null))))
+                            (go/expand (func (hello)))
+                            (list (go:expr (go:func (cons #f #f)
+                                                    'hello null null null))))
+                           (check-equal?
+                            (go/expand (func (hello ())))
+                            (list (go:expr (go:func (cons #f #f)
+                                                    'hello null null null))))
                            (check-equal?
                             (go/expand (func (hello () ())))
-                            (list (go:expr (go:func (cons #f #f) 'hello null null null))))
+                            (list (go:expr (go:func (cons #f #f)
+                                                    'hello null null null))))
                            (check-equal?
-                            (go/expand (func ((hello (s (ptr Struct))) () ())))
+                            (go/expand (func ((hello (s (ptr Struct))))))
                             (list (go:expr (go:func (cons (go:type:id 'ptr (go:type:id:ptr (go:type:id 'Struct #f))) 's)
                                                     'hello
                                                     null null null))))
                            (check-equal?
-                            (go/expand (func ((t) ())))
+                            (go/expand (func ((t))))
                             (list (go:expr (go:func (cons #f #f) #f (list (go:type:id 't #f)) null null))))
                            (check-equal?
-                            (go/expand (func (((slice t)) ())))
+                            (go/expand (func (((slice t)))))
                             (list (go:expr (go:func (cons #f #f) #f
                                                     (list (go:type:id
                                                            'slice
@@ -1439,10 +1470,10 @@
 
                (test-suite "go"
                            (check-equal?
-                            (go/expand (go (func ())))
+                            (go/expand (go (func)))
                             (list (go:expr (go:go (go:expr (go:func (cons #f #f) #f null null null))))))
                            (check-equal?
-                            (go/expand (go ((func ()))))
+                            (go/expand (go ((func))))
                             (list (go:expr (go:go (go:expr (go:func:call (go:func (cons #f #f) #f null null null)
                                                                          null)))))))
 
@@ -1855,7 +1886,7 @@
                (test-suite "dummy"
                            (check-equal? (go/expand (package main)
                                                     (import os fmt)
-                                                    (func (main () ()) (println os.Args)))
+                                                    (func (main) (println os.Args)))
                                          (list (go:expr (go:package 'main))
                                                (go:expr (go:imports (list (go:import 'os #f) (go:import 'fmt #f))))
                                                (go:expr (go:func (cons #f #f) 'main null null
