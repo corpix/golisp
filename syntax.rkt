@@ -77,7 +77,7 @@
        ! not
        && and
        \|\| or
-       bitwise-and ;; | is a reader in racket, so & | are problematic
+       bitwise-and ;; | is a reader in racket, so | is problematic, not supporting & too, to make it more easy to remember until I find a more beautiful solution
        bitwise-or
        ^  bitwise-xor
        << bitwise-left-shift
@@ -220,13 +220,12 @@
              #:attr kind (quote primitive)
              #:attr ast  (go:type:id:func null null))
     (pattern (func
-              ((~optional i:FuncIO #:defaults ((i (syntax null))))
-               (~optional o:FuncIO #:defaults ((o (syntax null))))))
+              ((~optional i:FuncI #:defaults ((i (syntax #f))))
+               (~optional o:FuncO #:defaults ((o (syntax #f))))))
              #:attr id   (quote func)
              #:attr kind (quote primitive)
-             #:attr ast  (go:type:id:func
-                          (or (attribute i.ast) null)
-                          (or (attribute o.ast) null))))
+             #:attr ast  (go:type:id:func (or (attribute i.ast) null)
+                                          (or (attribute o.ast) null))))
 
   (define-syntax-class TypeId%
     #:description "custom user type description"
@@ -265,12 +264,15 @@
     #:description "type definition"
     #:attributes (kind ast)
     #:datum-literals (type)
-    (pattern (type t:TypeId)
+    (pattern (type t:TypeId) ;; FIXME: this is a subject for refactoring, type is only for named type creation, referencing is not the case because we have (create ...). But, this is so convenient in the tests :)
              #:attr kind (attribute t.kind)
              #:attr ast  (go:type #f (attribute t.ast)))
-    (pattern (type (name:id t:TypeId))
+    (pattern (type (name:id t:TypeId) ...+)
              #:attr kind (attribute t.kind)
-             #:attr ast  (go:type (attribute name) (attribute t.ast))))
+             #:attr ast  (map
+                          (lambda (name type) (go:type name type))
+                          (attribute name)
+                          (attribute t.ast))))
 
   ;;
 
@@ -358,8 +360,36 @@
 
   ;;
 
-  (define-syntax-class FuncIO
-    #:description "type to name binding"
+  (define-syntax-class FuncI
+    #:description "type to name binding in function input(arguments)"
+    #:attributes (ast)
+    #:datum-literals (&rest)
+    (pattern () #:attr ast null)
+    (pattern ((~seq (~optional rest:&rest #:defaults ((rest (syntax #f))))
+                    type:TypeId) ...+)
+             ;; FIXME: how the fuck should I fail with error here?
+             ;; #:fail-when (not (= 1 (length (filter
+             ;;                                (lambda (v) (syntax->datum v))
+             ;;                                (attribute rest)))))
+             ;; "multiple &rest keywords"
+
+             #:attr ast (map (lambda (rest? type)
+                               (if (syntax->datum rest?)
+                                   (go:func:type:variadic type)
+                                   type))
+                             (attribute rest)
+                             (attribute type.ast)))
+    (pattern (((~optional rest:&rest #:defaults ((rest (syntax #f))))
+               name:id type:TypeId) ...+)
+             #:attr ast (map (lambda (rest? n t)
+                               (cons n (if (syntax->datum rest?)
+                                           (go:func:type:variadic t) t)))
+                             (attribute rest)
+                             (attribute name)
+                             (attribute type.ast))))
+
+  (define-syntax-class FuncO
+    #:description "type to name binding in function output(return arguments)"
     #:attributes (ast)
     (pattern () #:attr ast null)
     (pattern (type:TypeId ...+)
@@ -374,8 +404,8 @@
     #:attributes (ast)
     #:datum-literals (func)
     (pattern (func) #:attr ast (go:func (cons #f #f) #f null null null))
-    (pattern (func ((~optional i:FuncIO #:defaults ((i (syntax null))))
-                    (~optional o:FuncIO #:defaults ((o (syntax null)))))
+    (pattern (func ((~optional i:FuncI #:defaults ((i (syntax #f))))
+                    (~optional o:FuncO #:defaults ((o (syntax #f)))))
                    body:ExprRecur ...)
              #:attr ast (go:func (cons #f #f) #f
                                  (or (attribute i.ast) null)
@@ -383,8 +413,8 @@
                                  (attribute body.ast)))
     (pattern (func
               ((~or* name:id (name:id (struct-binding:id struct-type:TypeId)))
-               (~optional i:FuncIO #:defaults ((i (syntax null))))
-               (~optional o:FuncIO #:defaults ((o (syntax null)))))
+               (~optional i:FuncI #:defaults ((i (syntax #f))))
+               (~optional o:FuncO #:defaults ((o (syntax #f)))))
               body:ExprRecur ...)
              #:attr ast (go:func (cons (attribute struct-type.ast)
                                        (attribute struct-binding))
@@ -1164,10 +1194,17 @@
                            (check-equal?
                             (go/expand (type (name (chan (struct)))))
                             (list (go:expr
-                                   (go:type 'name
-                                            (go:type:id 'chan
-                                                        (go:type:id:chan #f
-                                                                         (go:type:id 'struct (go:type:id:struct null)))))))))
+                                   (list (go:type 'name
+                                                  (go:type:id 'chan
+                                                              (go:type:id:chan #f
+                                                                               (go:type:id 'struct (go:type:id:struct null)))))))))
+                           (check-equal?
+                            (go/expand (type (name string) (label string)))
+                            (list (go:expr
+                                   (list (go:type 'name
+                                                  (go:type:id 'string #f))
+                                         (go:type 'label
+                                                  (go:type:id 'string #f)))))))
 
                (test-suite "create"
                            (check-equal?
@@ -1391,6 +1428,20 @@
                                             `((name        . ,(go:type:id 'type       #f)))
                                             `((returnName  . ,(go:type:id 'returnType #f)))
                                             null))))
+
+                           (check-equal?
+                            (go/expand (func ((&rest t))))
+                            (list (go:expr (go:func (cons #f #f) #f
+                                                    (list (go:func:type:variadic (go:type:id 't #f)))
+                                                    null null))))
+                           (check-equal?
+                            (go/expand (func (((&rest name type)))))
+                            (list (go:expr
+                                   (go:func (cons #f #f)
+                                            #f
+                                            `((name . ,(go:func:type:variadic (go:type:id 'type #f))))
+                                            null null))))
+
                            (check-equal?
                             (go/expand (func (((name type) (name1 type1))
                                               ((returnName  returnType)

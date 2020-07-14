@@ -229,12 +229,14 @@
      (string-append +lbracket+
                     (string-join (map emit-func ast) +scomma+)
                     +rbracket+))
-    ((go:type:id name type)
+    ((? go:type:id? ast)
      (emit-type ast))
-    ((cons k v)
-     (string-append (*->string k) +space+ (emit-type v)))
-    ((list xs ...)
-     (string-append +lbracket+ (string-join (map emit-func ast) +scomma+) +rbracket+))
+    ((go:func:type:variadic type)
+     (string-append "..." (emit-type type)))
+    ((cons sym (go:func:type:variadic type))
+     (string-append (*->string sym) +space+ "..." (emit-type type)))
+    ((cons sym type)
+     (string-append (*->string sym) +space+ (emit-type type)))
     ((? symbol? ast)
      (*->string ast))))
 
@@ -996,6 +998,17 @@
                                                 `((returnName  . ,(go:type:id 'returnType #f)))
                                                 null))
                             "func (name type) (returnName returnType) {}")
+                           (check-equal?
+                            (emit-func (go:func (cons #f #f) #f
+                                                (list (go:func:type:variadic (go:type:id 't #f)))
+                                                null null))
+                            "func (...t) () {}")
+                           (check-equal?
+                            (emit-func (go:func (cons #f #f)
+                                                #f
+                                                `((name . ,(go:func:type:variadic (go:type:id 'type #f))))
+                                                null null))
+                            "func (name ...type) () {}")
                            (check-equal?
                             (emit-func (go:func (cons #f #f)
                                                 #f

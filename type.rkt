@@ -67,8 +67,9 @@
 (struct go:ref         (expr)                #:prefab)
 (struct go:deref       (expr)                #:prefab)
 
-(struct go:func      (name input output struct body) #:prefab)
-(struct go:func:call (func arguments)                #:prefab)
+(struct go:func               (name input output struct body) #:prefab)
+(struct go:func:type:variadic (sym)                           #:prefab)
+(struct go:func:call          (func arguments)                #:prefab)
 
 ;;
 
