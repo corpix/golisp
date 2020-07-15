@@ -415,7 +415,10 @@
                                  (or (attribute o.ast) null)
                                  (attribute body.ast)))
     (pattern (func
-              ((~or* name:id (name:id (struct-binding:id struct-type:TypeId)))
+              ((~or* name:id
+                     (name:id ((~optional struct-binding:id
+                                          #:defaults ((struct-binding (syntax #f))))
+                               struct-type:TypeId)))
                (~optional i:FuncI #:defaults ((i (syntax #f))))
                (~optional o:FuncO #:defaults ((o (syntax #f)))))
               body:ExprRecur ...)
@@ -1431,6 +1434,12 @@
                             (go/expand (func (hello () ())))
                             (list (go:expr (go:func (cons #f #f)
                                                     'hello null null null))))
+                           (check-equal?
+                            (go/expand (func ((hello ((ptr Struct))))))
+                            (list (go:expr (go:func (cons (go:type:id 'ptr (go:type:id:ptr (go:type:id 'Struct 'Struct)))
+                                                          #f)
+                                                    'hello
+                                                    null null null))))
                            (check-equal?
                             (go/expand (func ((hello (s (ptr Struct))))))
                             (list (go:expr (go:func (cons (go:type:id 'ptr (go:type:id:ptr (go:type:id 'Struct 'Struct))) 's)
