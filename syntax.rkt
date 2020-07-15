@@ -673,7 +673,7 @@
     #:description "select statement"
     #:attributes (ast)
     #:datum-literals (select)
-    (pattern (select ~! cases:Case ...+)
+    (pattern (select ~! cases:Case ...)
              #:attr ast (go:select (attribute cases.ast))))
 
   ;;
@@ -1808,6 +1808,9 @@
                                                      (list (go:expr (go:func:call 'fmt.Println (list (go:expr "default"))))))))))))
 
                (test-suite "select"
+                           (check-equal?
+                            (go/expand (select))
+                            (list (go:expr (go:select(list)))))
                            (check-equal?
                             (go/expand (select (default (println "default case"))))
                             (list (go:expr
