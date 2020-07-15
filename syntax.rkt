@@ -12,6 +12,7 @@
          (for-syntax (except-in racket/list flatten)
                      racket/base
                      racket/match
+                     racket/string
                      racket/format
                      racket/syntax
                      syntax/parse
@@ -140,11 +141,22 @@
   (define-syntax-class TypeIdStruct/Field
     #:description "struct type field"
     #:attributes (ast)
-    (pattern (k:id v:TypeId (~optional tag:string #:defaults ((tag (syntax #f)))))
+    #:datum-literals (tag)
+    (pattern (k:id v:TypeId (~optional t:string #:defaults ((t (syntax #f)))))
              #:attr ast (go:type:id:struct:field
                          (*->symbol (syntax k))
                          (attribute v.ast)
-                         (syntax->datum (syntax tag))))
+                         (attribute t)))
+    (pattern (k:id v:TypeId (tag (tag-key:id tag-value:string) ...+))
+             #:attr ast (go:type:id:struct:field
+                         (*->symbol (syntax k))
+                         (attribute v.ast)
+                         (string-join
+                          (map (lambda (k v) (string-append (symbol->string (syntax->datum k))
+                                                            ":" (~s (syntax->datum v))))
+                               (attribute tag-key)
+                               (attribute tag-value))
+                          " ")))
     (pattern v:TypeId
              #:attr ast (go:type:id:struct:field #f (attribute v.ast) #f)))
 
@@ -383,10 +395,15 @@
                              (attribute rest)
                              (attribute type.ast)))
     (pattern (((~optional rest:&rest #:defaults ((rest (syntax #f))))
-               name:id type:TypeId) ...+)
+               (~optional name:id    #:defaults ((name (syntax #f))))
+               type:TypeId)
+              ...+)
              #:attr ast (map (lambda (rest? n t)
-                               (cons n (if (syntax->datum rest?)
-                                           (go:func:type:variadic t) t)))
+                               (let ((type (if (syntax->datum rest?)
+                                               (go:func:type:variadic t) t)))
+                                 (if (syntax->datum n)
+                                     (cons n type)
+                                     type)))
                              (attribute rest)
                              (attribute name)
                              (attribute type.ast))))
@@ -397,8 +414,10 @@
     (pattern () #:attr ast null)
     (pattern (type:TypeId ...+)
              #:attr ast (attribute type.ast))
-    (pattern ((name:id type:TypeId) ...+)
-             #:attr ast (map (lambda (n t) (cons n t))
+    (pattern (((~optional name:id #:defaults ((name (syntax #f))))
+               type:TypeId)
+              ...+)
+             #:attr ast (map (lambda (n t) (if (syntax->datum n) (cons n t) t))
                              (attribute name)
                              (attribute type.ast))))
 
@@ -1100,6 +1119,24 @@
                                                                                     (go:type:id 'X 'X)))))
                                                   #f)))))
                            (check-equal?
+                            (go/expand (type (struct (X string "json:\"x\""))))
+                            (list (go:expr
+                                   (list (go:type #f (go:type:id
+                                                      'struct
+                                                      (go:type:id:struct
+                                                       (list (go:type:id:struct:field 'X (go:type:id 'string 'string)
+                                                                                      "json:\"x\""))))
+                                                  #f)))))
+                           (check-equal?
+                            (go/expand (type (struct (X string (tag (json "x"))))))
+                            (list (go:expr
+                                   (list (go:type #f (go:type:id
+                                                      'struct
+                                                      (go:type:id:struct
+                                                       (list (go:type:id:struct:field 'X (go:type:id 'string 'string)
+                                                                                      "json:\"x\""))))
+                                                  #f)))))
+                           (check-equal?
                             (go/expand (type (struct io.Reader (x (map string string)) (y X))))
                             (list (go:expr
                                    (list (go:type #f (go:type:id 'struct (go:type:id:struct
@@ -1455,6 +1492,34 @@
                                                            'slice
                                                            (go:type:id:slice (go:type:id 't 't))))
                                                     null null))))
+                           (check-equal?
+                            (go/expand (func (((type)))))
+                            (list (go:expr
+                                   (go:func (cons #f #f)
+                                            #f
+                                            (list (go:type:id 'type 'type))
+                                            null null))))
+                           (check-equal?
+                            (go/expand (func (((ptr type)))))
+                            (list (go:expr
+                                   (go:func (cons #f #f)
+                                            #f
+                                            (list (go:type:id 'ptr (go:type:id:ptr (go:type:id 'type 'type))))
+                                            null null))))
+                           (check-equal?
+                            (go/expand (func (() ((returnType)))))
+                            (list (go:expr
+                                   (go:func (cons #f #f)
+                                            #f null
+                                            (list (go:type:id 'returnType 'returnType))
+                                            null))))
+                           (check-equal?
+                            (go/expand (func (() ((ptr returnType)))))
+                            (list (go:expr
+                                   (go:func (cons #f #f)
+                                            #f null
+                                            (list (go:type:id 'ptr (go:type:id:ptr (go:type:id 'returnType 'returnType))))
+                                            null))))
                            (check-equal?
                             (go/expand (func (((name type))
                                               ((returnName returnType)))))

@@ -662,6 +662,14 @@
                             "map[key]value")
 
                            (check-equal?
+                            (emit-type (go:type #f (go:type:id
+                                                    'struct
+                                                    (go:type:id:struct
+                                                     (list (go:type:id:struct:field 'X (go:type:id 'string 'string)
+                                                                                    "json:\"x\""))))
+                                                #f))
+                            "struct{\n\tX string `json:\"x\"`\n}")
+                           (check-equal?
                             (emit-type
                              (go:type #f (go:type:id
                                           'struct
@@ -915,7 +923,9 @@
                               (go:type:id 'map
                                           (go:type:id:map
                                            (go:type:id 'string 'string)
-                                           (go:type:id 'struct (go:type:id:struct (list (go:type:id:struct:field 'x (go:type:id 'int 'int) #f))))))
+                                           (go:type:id 'struct
+                                                       (go:type:id:struct
+                                                        (list (go:type:id:struct:field 'x (go:type:id 'int 'int) #f))))))
                               (list (cons "1" (go:expr (go:create
                                                         (go:type:id 'struct (go:type:id:struct (list (go:type:id:struct:field 'x (go:type:id 'int 'int) #f))))
                                                         (list (cons 'x (go:expr 1))))))
@@ -1029,6 +1039,30 @@
                                                        (go:type:id:slice (go:type:id 't 't))))
                                                 null))
                             "func () ([]t) {}")
+                           (check-equal?
+                            (emit-func (go:func (cons #f #f)
+                                                #f
+                                                (list (go:type:id 'type 'type))
+                                                null null))
+                            "func (type) () {}")
+                           (check-equal?
+                            (emit-func (go:func (cons #f #f)
+                                                #f
+                                                (list (go:type:id 'ptr (go:type:id:ptr (go:type:id 'type 'type))))
+                                                null null))
+                            "func (*type) () {}")
+                           (check-equal?
+                            (emit-func (go:func (cons #f #f)
+                                                #f null
+                                                (list (go:type:id 'returnType 'returnType))
+                                                null))
+                            "func () (returnType) {}")
+                           (check-equal?
+                            (emit-func (go:func (cons #f #f)
+                                                #f null
+                                                (list (go:type:id 'ptr (go:type:id:ptr (go:type:id 'returnType 'returnType))))
+                                                null))
+                            "func () (*returnType) {}")
                            (check-equal?
                             (emit-func (go:func (cons #f #f)
                                                 #f
