@@ -119,28 +119,56 @@ func RootAction(ctx *cli.Context) error {
 }
 
 var (
-	DefaultConfig Config     = Config{}
-	DefaultListen string     = "0.0.0.0:5353"
-	Flags         []cli.Flag = []cli.Flag{&cli.StringFlag{Name: "log-level",
-		Aliases: []string{"l"},
-		Usage:   "logging level (debug, info, error)",
-		Value:   "info"},
-		&cli.StringFlag{Name: "config",
-			Aliases: []string{"c"},
-			EnvVars: []string{(EnvironPrefix + "_CONFIG")},
-			Usage:   "path to application configuration file",
-			Value:   "config.yaml"}}
-	Commands []*cli.Command = []*cli.Command{&cli.Command{Name: "config",
-		Aliases: []string{"c"},
-		Usage:   "Configuration Tools",
-		Subcommands: []*cli.Command{&cli.Command{Name: "show-default",
-			Aliases: []string{"sd"},
-			Usage:   "Show default configuration",
-			Action:  ConfigShowDefaultAction},
-			&cli.Command{Name: "show",
-				Aliases: []string{"s"},
-				Usage:   "Show default configuration",
-				Action:  ConfigShowAction}}}}
+	DefaultConfig = Config{}
+	DefaultListen = "0.0.0.0:5353"
+	Flags         = []cli.Flag{
+		&cli.StringFlag{
+			Name: "log-level",
+			Aliases: []string{
+				"l",
+			},
+			Usage: "logging level (debug, info, error)",
+			Value: "info",
+		},
+		&cli.StringFlag{
+			Name: "config",
+			Aliases: []string{
+				"c",
+			},
+			EnvVars: []string{
+				(EnvironPrefix + "_CONFIG"),
+			},
+			Usage: "path to application configuration file",
+			Value: "config.yaml",
+		},
+	}
+	Commands = []*cli.Command{
+		&cli.Command{
+			Name: "config",
+			Aliases: []string{
+				"c",
+			},
+			Usage: "Configuration Tools",
+			Subcommands: []*cli.Command{
+				&cli.Command{
+					Name: "show-default",
+					Aliases: []string{
+						"sd",
+					},
+					Usage:  "Show default configuration",
+					Action: ConfigShowDefaultAction,
+				},
+				&cli.Command{
+					Name: "show",
+					Aliases: []string{
+						"s",
+					},
+					Usage:  "Show default configuration",
+					Action: ConfigShowAction,
+				},
+			},
+		},
+	}
 )
 
 func NewApp() *cli.App {
@@ -155,8 +183,12 @@ func main() {
 	if nil != err {
 		fatal(err)
 	}
-	cli, err := EtcdConnect(EtcdConfig{Endpoints: []string{"127.0.0.1:2379"},
-		DialTimeout: (5 * time.Second)})
+	cli, err := EtcdConnect(EtcdConfig{
+		Endpoints: []string{
+			"127.0.0.1:2379",
+		},
+		DialTimeout: (5 * time.Second),
+	})
 	if nil != err {
 		fatal(err)
 	}
