@@ -14,14 +14,6 @@
     ((_ xs ...) (syntax (cons (quote (xs ...))
                               (go/string (package main) xs ...))))))
 
-;; functions (func return spread go defer)
-;; structs
-;; interfaces
-;; channels (<- -> send receive)
-;; loops (for break continue)
-;; flow control (if switch select goto label)
-
-
 (group "packages"
        (example (import github.com/pkg/errors
                         google.golang.org/grpc))
@@ -29,13 +21,19 @@
 
 (group "operators"
        (group "math"
-              (example (func (main)
-                             (create (slice int)
-                                     ((+ 1 1)
-                                      (- 1 1)
-                                      (% 11 10)
-                                      (* 1 1)
-                                      (/ 2 2))))))
+              (example (import fmt)
+                       (func (main)
+                             (fmt.Println (create (slice int)
+                                                  ((+ 1 1)
+                                                   (- 1 1)
+                                                   (% 11 10)
+                                                   (* 1 1)
+                                                   (/ 2 2))))
+                             (def x 0)
+                             (inc x)
+                             (fmt.Println "x =" x)
+                             (dec x)
+                             (fmt.Println "x =" x))))
        (group "boolean"
               (example (== 1 1))
               (example (!= 2 1))
@@ -102,11 +100,13 @@
 (group "functions"
        (group "named and anonymous"
               (example (func (sayHello ((name string)))
-                             (println (+ "hello " name))))
+                             (println (+ "hello " name)))
+                       (func (main) (sayHello "golisp")))
               (example (func (returnHello ((name string)) (string))
-                             (return (+ "hello " name))))
-              (example ((func ()
-                              (println "hello lambda world")))))
+                             (return (+ "hello " name)))
+                       (func (main) (println (returnHello "golisp"))))
+              (example (func (main)
+                             ((func () (println "hello golisp"))))))
 
        (group "spread"
               (example (import strings)
@@ -116,23 +116,141 @@
                              (sayHello (spread (create (slice string)
                                                        ("my" "name" "is" "boris")))))))
 
+       (group "go & defer"
+              (example (import sync)
+                       (func (main)
+                             (def wg (create sync.WaitGroup))
+                             (wg.Add 1)
+                             (go ((func ()
+                                        (println "hello golisp")
+                                        (wg.Done))))
+                             (wg.Wait)))
+              (example (func (main)
+                             (defer (println "the execution order is..."))
+                             (println "reversed"))))
+
        (group "struct methods"
               (example (type (Greet (struct)))
-                       (func ((sayHello (g Greet)) ((name string))) ;; FIXME: make receiver name optional
-                             (println (+ "hello " name))))))
-
-(group "properties"
-       (example (println "hello"))
-       (example (import fmt)
-                ((key fmt Println) "hello"))
-       (example (def example (create (struct (level1 (struct (level2 string))))
-                                     ((create (struct (level2 string)) ("nested property")))))
-                (println (key example level1 level2))
-                (set (key example level1 level2) "modified nested property")))
+                       (func ((sayHello (Greet)) ((name string)))
+                             (println (+ "hello " name)))
+                       (func (main) ((key (create Greet) sayHello) "golisp")))))
 
 (group "structs"
-       (example (type (Language (struct
-                                  (name string)
-                                  (version int)))))
-       (example (def lang (create Language ("golisp" 1))))
-       (example (set (key lang version) 2)))
+       (example (import fmt sync)
+                (type (State (struct
+                               sync.RWMutex
+                               (store (map string (interface))))))
+                (func ((set (s (ptr State)))
+                       ((key string) (value (interface)))
+                       ((ptr State)))
+                      (s.Lock)
+                      (defer (s.Unlock))
+                      (set (index s.store key) value)
+                      (return s))
+                (func ((get (s (ptr State)))
+                       ((key string))
+                       ((value (interface)) (ok bool)))
+                      (s.RLock)
+                      (defer (s.RUnlock))
+                      (set (value ok) ((index s.store key)))
+                      (return))
+                (func (main)
+                      (def state (create State ((store (create (map string (interface)))))))
+                      (state.set "foo" "bar")
+                      (def (value ok) ((state.get "foo")))
+                      (fmt.Println "has value?" ok)
+                      (fmt.Println value)))
+       (example (import fmt encoding/json)
+                (type (Payload (struct
+                                 (Body (slice byte) (tag (json "body"))))))
+                (func (main)
+                      (def (buf err)
+                        ((json.Marshal
+                          (create Payload ((Body (cast "hello world" (slice byte))))))))
+                      (when (!= err nil) (panic err))
+                      (fmt.Println (cast buf string)))))
+
+(group "interfaces"
+       (example (type (Greeter (interface
+                                   (Greet (func (((name string))))))))
+                (type (HelloGreeter (struct)))
+                (func ((Greet (HelloGreeter)) ((name string)))
+                      (println "hello" name))
+                (func (main)
+                      (var (g Greeter (create HelloGreeter)))
+                      (g.Greet "world"))))
+
+(group "channels"
+       (example (var (ch (chan string) (make (type chan string) 5)))
+                (func (main)
+                      (send ch "hello")
+                      (-> ch "world")
+                      (println (receive ch))
+                      (println (<- ch)))))
+
+(group "loops"
+       (example (import fmt)
+                (func (main)
+                      (def values (create (slice int) (1 2 3)))
+                      (for ((k v) (range values))
+                        (fmt.Println k v))))
+       (example (import fmt)
+                (func (main)
+                      (for (k 10 (> k 0) (-- k))
+                        (fmt.Println k))))
+       (example (import fmt)
+                (func (main)
+                      (for (k 10 (> k 0) (-- k))
+                        (when (< k 5) (break))
+                        (fmt.Println k))))
+       (example (import fmt)
+                (func (main)
+                      (for (k 10 (> k 0) (-- k))
+                        (when (> k 5) (continue))
+                        (fmt.Println k)))))
+
+(group "flow control"
+       (example (func (main)
+                      (if true (println "thats true"))
+                      (if false
+                          (println "thats true")
+                          (println "ain't done this"))))
+       (example (func (main)
+                      (when true (println "thats true"))
+                      (unless false
+                        (println "ain't done this"))))
+       (example (import runtime)
+                (func (main)
+                      (def os (key runtime GOOS))
+                      (switch os
+                              ("darwin" (println "os x"))
+                              ("linux"  (println "linux"))
+                              (default  (println os)))))
+       (example (import time)
+                (func (main)
+                      (def t (time.Now))
+                      (cond ((< (t.Hour) 12) (println "good morning!"))
+                            ((< (t.Hour) 17) (println "good afternoon!"))
+                            (default         (println "good evening!")))))
+       (example (import fmt)
+                (var ((ch)   (make (type (chan string))))
+                     ((done) (make (type (chan (struct))))))
+                (func (main)
+                      (go ((func ()
+                                 (defer (close done))
+                                 (send ch "hello"))))
+                      (label loop
+                             (for ()
+                               (select
+                                ((def v (receive ch))
+                                 (fmt.Println "got a message" v))
+                                ((receive done)
+                                 (fmt.Println "finished")
+                                 (break loop)))))))
+       (example (func (main)
+                      (def n 0)
+                      (label start
+                             (begin
+                               (println n)
+                               (inc n)
+                               (when (< n 5) (goto start)))))))
