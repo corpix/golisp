@@ -71,6 +71,9 @@
 (struct go:func:type:variadic (sym)                           #:prefab)
 (struct go:func:call          (func arguments)                #:prefab)
 
+(struct go:macro (name args expr) #:prefab)
+(struct go:quote (expr)           #:prefab)
+
 ;;
 
 (struct go:expr (exprs) #:prefab)

@@ -257,6 +257,12 @@
     ((? symbol? ast)
      (*->string ast))))
 
+(define (emit-macro ast) +empty+) ;; NOTE: this is for future, for syntax-maps
+
+(define (emit-quote ast)
+  (match ast
+    ((go:quote expr) (emit-string expr))))
+
 (define (emit-var ast)
   (let ((emit-bindings (lambda (kind bindings)
                          (string-append kind +space+ +lbracket+ +new-line+
@@ -527,6 +533,8 @@
     ((? go:package?  ast) (emit-package  ast))
     ((? go:imports?  ast) (emit-imports  ast))
     ((? go:func?     ast) (emit-func     ast))
+    ((? go:macro?    ast) (emit-macro    ast))
+    ((? go:quote?    ast) (emit-quote    ast))
     ((? go:var?      ast) (emit-var      ast))
     ((? go:const?    ast) (emit-var      ast))
     ((? go:go?       ast) (emit-go       ast))
@@ -582,9 +590,7 @@
     ((? symbol? ast) (emit-id (symbol->string ast)))
     ((? string? ast) (emit-string ast))
     ((? number? ast) (emit-number ast))
-    ((? list? ast)   (string-join
-                      (map emit-expr ast)
-                      +new-line+))))
+    ((? list? ast)   (string-join (map emit-expr ast) +new-line+))))
 
 
 (define go/emit emit-expr)

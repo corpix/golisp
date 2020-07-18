@@ -6,8 +6,8 @@
          racket/format
          racket/set
          racket/syntax
+         racket/struct
 	 syntax/parse
-         "macro.rkt"
          "tool.rkt"
          (for-syntax (except-in racket/list flatten)
                      racket/base
@@ -17,21 +17,17 @@
                      racket/syntax
                      syntax/parse
                      "type.rkt"
-                     "macro.rkt"
                      "tool.rkt"))
 
 (provide (all-defined-out)
-         (for-syntax (all-from-out "macro.rkt")
-                     (all-defined-out)))
-
-(begin-for-syntax
-  (define *prelude*  (make-parameter (box null)))
-  (define *epilogue* (make-parameter (box null))))
-
-;;
+         (for-syntax (all-defined-out)))
 
 (define-namespace-anchor ns-anchor)
 (define ns (namespace-anchor->namespace ns-anchor))
+
+(define *prelude*  (make-parameter (box null)))
+(define *epilogue* (make-parameter (box null)))
+(define *macro*    (make-parameter (make-hasheq)))
 
 ;;
 
@@ -49,8 +45,7 @@
               (define-syntax xx xs ...)
               (hash-set! (*macro*)
                          (quote name)
-                         (lambda caller-args
-                           (eval (cons (quote go/name) caller-args) ns)))))))))))
+                         (lambda in (eval (cons (quote go/name) in))))))))))))
 
 (define-syntax (define-gosyntax-class-map stx)
   (syntax-parse stx
@@ -448,6 +443,22 @@
                                  (or (attribute i.ast) null)
                                  (or (attribute o.ast) null)
                                  (attribute body.ast))))
+
+  (define-syntax-class Macro
+    #:description "named macro definition"
+    #:attributes (ast)
+    #:datum-literals (macro)
+    (pattern (macro (name:id (~optional (args:id ...))) xs:expr ...+)
+             #:attr ast (go:macro (attribute name)
+                                  (or (attribute args) null)
+                                  (attribute xs))))
+
+  (define-syntax-class Quote
+    #:description "expression quoting"
+    #:attributes (ast)
+    #:datum-literals (quote quasiquote)
+    (pattern (quote xs:Expr)
+             #:attr ast (go:quote (syntax->datum (attribute xs)))))
 
   (define-syntax-class FuncCall
     #:description "function call"
@@ -888,7 +899,8 @@
                    v:Send     v:Receive
                    v:Inc      v:Dec
                    v:Ref      v:Deref
-                   v:Func)
+                   v:Func     v:Macro    v:Quote
+                   )
              #:attr ast (go:expr (attribute v.ast)))
     (pattern (~or* v:id v:boolean v:number v:string v:nil)
              #:attr ast (go:expr (syntax->datum (syntax v)))))
@@ -938,50 +950,91 @@
   (dec      Dec)
   (ref      Ref)
   (deref    Deref)
-  (func     Func))
+  (func     Func)
+  (macro    Macro)
+  (quote    Quote))
 
 ;;
 
-(define-gosyntax (prog stx)
+(define (walk-ast proc ast)
+  (let ((recur (lambda (v) (walk-ast proc v))))
+    (match ast
+      ((? prefab-struct-key ast)
+       (apply make-prefab-struct
+              (prefab-struct-key ast)
+              (map recur (struct->list (proc ast)))))
+      ((? list? ast)
+       (map recur (proc ast)))
+      (_ (proc ast)))))
+
+;;
+
+(define (macro? v)
+  (and (list? v)
+       (not (empty? v))
+       (symbol? (car v))
+       (go/get-macro (car v))))
+
+(define (go/get-macro name)
+  (hash-ref (*macro*) name #f))
+
+(define (go/expand-macro ast)
+  (walk-ast
+   (lambda (v)
+     (match v
+       ((? macro? v)
+        (let ((a (cdr v))
+              (f (go/get-macro (car v))))
+          (apply f a)))
+       (_ v)))
+   ast))
+
+(define-syntax (go/define-macro stx)
   (syntax-parse stx
-    ((_ xs:ExprRecur ...+) (attribute xs.ast))))
+    ((_ (name:id args:id ...) body ...+)
+     (syntax (hash-set!
+              (*macro*) name
+              (lambda (args ...) body ...))))))
+
+(define-syntax (go/expand stx)
+  (syntax-parse stx
+    ((_ xs:ExprRecur ...+)
+     (quasisyntax
+      (parameterize ((*prelude*  (box null))
+                     (*epilogue* (box null))
+                     (*macro*    (make-hasheq)))
+        (let ((ast (go/expand-macro (list (unsyntax-splicing (attribute xs.ast)))))
+              (p (unbox (*prelude*)))
+              (e (unbox (*epilogue*))))
+          (when (not (empty? p))
+            (set! ast (cons (car ast) (append p (cdr ast)))))
+          (when (not (empty? e))
+            (set! ast (append ast (unbox (*epilogue*)))))
+          ast))))))
+
+;;
 
 (define-gosyntax (prelude stx)
   (syntax-parse stx
     ((_ xs:ExprRecur ...+)
-     (begin0 (syntax (void))
-       (set-box! (*prelude*)
-                 (append (unbox (*prelude*))
-                         (expand-macro (attribute xs.ast))))))))
+     (quasisyntax
+      (set-box! (*prelude*)
+                (append (unbox (*prelude*))
+                        (go/expand-macro (unsyntax (attribute xs.ast)))))))))
 
 (define-gosyntax (epilogue stx)
   (syntax-parse stx
     ((_ xs:ExprRecur ...+)
-     (begin0 (syntax (void))
-       (set-box! (*epilogue*)
-                 (append (unbox (*epilogue*))
-                         (expand-macro (attribute xs.ast))))))))
+     (quasisyntax
+      (set-box! (*epilogue*)
+                (append (unbox (*epilogue*))
+                        (go/expand-macro (unsyntax (attribute xs.ast)))))))))
 
-(define-syntax (go/expand stx)
-  (syntax-parse stx
-    ((_ ex:ExprRecur ...+)
-     (parameterize
-         ((*prelude* (box null))
-          (*epilogue* (box null)))
-       (let ((ast (attribute ex.ast)))
-         (set! ast (expand-macro ast))
-         ;; (when (not (empty? (unbox (*prelude*))))
-         ;;   (let ((p (unbox (*prelude*))))
-         ;;     (set! ast (cons (car ast) (append p (cdr ast))))))
-         ;; (when (not (empty? (unbox (*epilogue*))))
-         ;;   (set! ast (append ast (unbox (*epilogue*)))))
-         (with-syntax ((ast ast))
-           (syntax (quote ast))))))))
+;;
 
 (module+ test
   (require rackunit
            rackunit/text-ui
-
            "type.rkt")
 
   (define-syntax (test-case/operator stx)
@@ -1595,6 +1648,23 @@
                                                             `((name1       . ,(go:type:id 'type1 'type1)))
                                                             `((returnName1 . ,(go:type:id 'returnType1 'returnType1)))
                                                             null))))))))
+
+               (test-suite "macro"
+                           (check-equal?
+                            (go/expand (macro (test) (quote (+ 1 1)))
+                                       (test))
+                            (list (go:expr (go:macro 'test null (list (quote (quote (+ 1 1))))))
+                                  (go:expr (go:func:call 'test null))))
+                           (check-equal?
+                            (go/expand (macro (test (a b c)) (quote (+ a b c)))
+                                       (test))
+                            (list (go:expr (go:macro 'test '(a b c) (list (quote (quote (+ a b c))))))
+                                  (go:expr (go:func:call 'test null)))))
+
+               (test-suite "quote"
+                           (check-equal?
+                            (go/expand (quote (+ 1 1)))
+                            (list (go:expr (go:quote (quote (+ 1 1)))))))
 
                (test-suite "var"
                            (check-equal?
