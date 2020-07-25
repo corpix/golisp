@@ -86,19 +86,17 @@
   (syntax-parse stx
     ((_ xs:expr ...+)
      (syntax
-      (eval `(go/expand-syntax
-              ,@(let loop ((counter 0) ;; FIXME: splice?
-                           (curr    (go/expand-macro-once xs ...))
-                           (prev    null))
-                  (cond
-                    ((>= counter (*macro-expand-max-depth*))
-                     (error (format "macro expansion depth limit reached: limit ~a" counter)))
-                    ((not (equal? prev curr))
-                     (loop (add1 counter)
-                           (eval `(go/expand-macro-once ,@curr) ns)
-                           curr))
-                    (#t curr))))
-            ns)))))
+      (let loop ((counter 0)
+                 (curr    (go/expand-macro-once xs ...))
+                 (prev    null))
+        (cond
+          ((>= counter (*macro-expand-max-depth*))
+           (error (format "macro expansion depth limit reached: limit ~a" counter)))
+          ((not (equal? prev curr))
+           (loop (add1 counter)
+                 (eval `(go/expand-macro-once ,@curr) ns)
+                 curr))
+          (#t curr)))))))
 
 (define-syntax (go/expand stx)
   (syntax-parse stx
