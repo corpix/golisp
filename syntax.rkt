@@ -24,8 +24,8 @@
 
 ;;
 
-(define-syntax (define-gosyntax stx)
-  (syntax-parse stx
+(define-syntax (go/define-special stx) ;; FIXME: define real special which could be reached from go code!
+  (syntax-parse stx                    ;;        probably will require to move from current parser implementation (see special-class-map & Expr syntax class)
     ((_ x xs ...+)
      (let* ((name+args (syntax->list (syntax x)))
             (name (car name+args))
@@ -35,7 +35,7 @@
          (with-syntax ((xx (quasisyntax (go/name (unsyntax-splicing args)))))
            (quasisyntax (define-syntax xx xs ...))))))))
 
-(define-syntax (define-gosyntax-class-map stx)
+(define-syntax (go/define-special-class-map stx)
   (syntax-parse stx
     ((_ (name:id class:id) ...+)
      (quasisyntax
@@ -46,8 +46,8 @@
              (with-syntax ((id         (car xs))
                            (name:class (format-id stx "~a:~a"  (car xs) (cdr xs)))
                            (ast        (format-id stx "~a.ast" (car xs))))
-               (syntax (define-gosyntax (id s)
-                         (syntax-parse s (name:class (attribute ast))))))))))))))
+               (syntax (go/define-special (id s)
+                                          (syntax-parse s (name:class (attribute ast))))))))))))))
 
 ;;
 
@@ -887,8 +887,7 @@
                    v:Send     v:Receive
                    v:Inc      v:Dec
                    v:Ref      v:Deref
-                   v:Func     v:Macro    v:Quote
-                   )
+                   v:Func     v:Macro    v:Quote)
              #:attr ast (go:expr (attribute v.ast)))
     (pattern (~or* v:nil v:id v:boolean v:number v:string)
              #:attr ast (go:expr (syntax->datum (syntax v)))))
@@ -904,45 +903,45 @@
 
 ;;
 
-(define-gosyntax-class-map
-  (package  Package)
-  (import   Import)
-  (var      Var)
-  (type     Type)
-  (create   Create)
-  (def      Def)
-  (set      Set)
-  (go       Go)
-  (if       If)
-  (when     When)
-  (unless   Unless)
-  (alias    Alias)
-  (for      For)
-  (begin    Begin)
-  (switch   Switch)
-  (cond     Cond)
-  (select   Select)
-  (cast     Cast)
-  (return   Return)
-  (break    Break)
-  (continue Continue)
-  (spread   Spread)
-  (label    Label)
-  (goto     Goto)
-  (iota     Iota)
-  (defer    Defer)
-  (slice    Slice)
-  (index    Index)
-  (key      Key)
-  (send     Send)
-  (receive  Receive)
-  (inc      Inc)
-  (dec      Dec)
-  (ref      Ref)
-  (deref    Deref)
-  (func     Func)
-  (macro    Macro)
-  (quote    Quote))
+(go/define-special-class-map
+ (package  Package)
+ (import   Import)
+ (var      Var)
+ (type     Type)
+ (create   Create)
+ (def      Def)
+ (set      Set)
+ (go       Go)
+ (if       If)
+ (when     When)
+ (unless   Unless)
+ (alias    Alias)
+ (for      For)
+ (begin    Begin)
+ (switch   Switch)
+ (cond     Cond)
+ (select   Select)
+ (cast     Cast)
+ (return   Return)
+ (break    Break)
+ (continue Continue)
+ (spread   Spread)
+ (label    Label)
+ (goto     Goto)
+ (iota     Iota)
+ (defer    Defer)
+ (slice    Slice)
+ (index    Index)
+ (key      Key)
+ (send     Send)
+ (receive  Receive)
+ (inc      Inc)
+ (dec      Dec)
+ (ref      Ref)
+ (deref    Deref)
+ (func     Func)
+ (macro    Macro)
+ (quote    Quote))
 
 ;;
 

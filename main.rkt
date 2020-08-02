@@ -1,14 +1,26 @@
 #lang racket/base
-(require "syntax.rkt"
+(require "type.rkt"
+         "parameter.rkt"
+         "syntax.rkt"
          "expand.rkt"
+         "transformer.rkt"
          "ast-go.rkt")
-(provide go/expand
-         go/expand-syntax
-         go/expand-macro
-         go/define-macro
+(provide (all-from-out "type.rkt")
+         (all-from-out "parameter.rkt")
+         go/with-env
+         go/expand
          go/string
          go/write-file
-         *prelude*
-         *epilogue*
-         *scope*
+         go/define-special ;; FIXME: this is pointless untill it will really define a special inside parser (see FIXME in syntax.rkt)
+         go/define-macro
+         go/expand-macro
+         go/expand-macro-once
+         go/expand-syntax
+         go/transform
+         go/transform-once
+
+         make-macro-transformer
+         make-package-transformer
+         make-transformers
+
          ast->go)

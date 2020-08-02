@@ -2,6 +2,11 @@
 (provide (all-defined-out)
          (for-syntax (all-defined-out)))
 
+(struct transformer (name procs)  #:transparent)
+(struct proc        (phase value) #:transparent)
+
+(struct walk:skip (unbox))
+
 ;;
 
 (struct go:operator (id operands) #:prefab)

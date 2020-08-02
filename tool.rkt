@@ -1,6 +1,8 @@
 #lang racket/base
 (require racket/match
+         racket/function
          racket/bool
+         racket/string
          racket/list
          racket/format
          rackunit
@@ -16,20 +18,25 @@
     (let ((failed 0)
           (exn   #f)
           (out        (open-output-string))
+          (err        (open-output-string))
           (suite-name (rackunit-test-suite-name suite)))
-      (try (parameterize ((current-output-port out))
+      (try (parameterize ((current-output-port out)
+                          (current-error-port  err))
              (set! failed (run-tests suite 'normal)))
            (catch ((exn? (lambda (v)
                            (set! failed (add1 failed))
                            (set! exn v)))))
            (finally
-            (display (~a suite-name ": " #:min-width 15 #:right-pad-string " "))
-            (cond
-              (exn (displayln (format "FAILED\n"))
-                   (display (get-output-string out))
-                   (display "\n"))
-              (#t  (display (get-output-string out))))))
+            (display (~a suite-name ": " #:min-width 25 #:right-pad-string " "))
+            (unless (= 0 failed) (displayln (format "FAILED\n")))
+            (let ((out-str (get-output-string out))
+                  (err-str (get-output-string err)))
+              (when (non-empty-string? out-str)
+                (display out-str))
+              (when (non-empty-string? err-str)
+                (display err-str)))))
 
+      (when exn (raise exn))
       (unless (= 0 failed)
         (error (format "some tests in ~s suite failed" suite-name))))))
 
@@ -71,7 +78,7 @@
 
 ;; functional
 
-(define (identity v) v)
+;; (define (identity v) v)
 
 (define ((partial-left f . xs) . xxs)
   (apply f (append xs xxs)))
